@@ -1,4 +1,4 @@
-package dsl
+package us.awfl.dsl
 
 /**
   * Represents a YAML-exportable Google Workflows definition.

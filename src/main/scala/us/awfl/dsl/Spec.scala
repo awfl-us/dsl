@@ -1,4 +1,4 @@
-package dsl
+package us.awfl.dsl
 
 import scala.deriving.Mirror
 import scala.compiletime.{erasedValue, summonInline, constValueTuple}
@@ -13,10 +13,6 @@ implicit def mapSpec[T]: Spec[Map[String, T]] = Spec(_ => Map())
 implicit def listSpec[T]: Spec[List[T]] = Spec(_ => List.empty)
 implicit def optValueSpec[T: Spec]: Spec[OptValue[T]] = Spec(resolver => OptValue(resolver))
 implicit def optListSpec[T: Spec]: Spec[OptList[T]] = Spec(resolver => OptList(resolver))
-// implicit def optionSpec[T: Spec]: Spec[Option[T]] = Spec(r => Some(implicitly[Spec[T]].init(r)))
-
-// implicit def valueSpec[T: Spec]: Spec[BaseValue[T]] = Spec(r => Value(r))
-// implicit def valueSpec[T]: Spec[BaseValue[T]] = Spec(_ => sys.error("Tried to get a value spec!"))
 
 object auto:
   inline given derivedSpec[T](using m: Mirror.ProductOf[T]): Spec[T] =

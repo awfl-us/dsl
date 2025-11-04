@@ -1,8 +1,8 @@
-package dsl
+package us.awfl.dsl
 
 import io.circe.Encoder
 import scala.annotation.tailrec
-import dsl.CelOps._
+import us.awfl.dsl.CelOps._
 
 sealed trait BaseValue[T] {
   def get: T

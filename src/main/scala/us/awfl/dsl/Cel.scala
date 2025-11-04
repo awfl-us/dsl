@@ -1,4 +1,4 @@
-package dsl
+package us.awfl.dsl
 
 import scala.language.implicitConversions
 
@@ -59,8 +59,6 @@ object Cel {
 
   given Conversion[BaseValue[_], Cel] with
     def apply(v: BaseValue[_]): Cel = CelValue(v)
-
-  // implicit val celValue: Value[Cel] = Value.as { resolver => "" }
 }
 
 object CelOps {

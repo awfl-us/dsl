@@ -1,4 +1,4 @@
-package dsl
+package us.awfl.dsl
 
 import io.circe.syntax._ // for .asJson
 import io.circe.Encoder
