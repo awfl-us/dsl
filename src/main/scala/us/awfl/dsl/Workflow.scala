@@ -12,7 +12,7 @@ case class ConnectorParams(skip_polling: Boolean)
 case class RunWorkflowArgs[T](
     workflow_id:      BaseValue[String],
     argument:         BaseValue[T],
-    location:         String          = "us-central1",
-    project_id:       String          = "topaigents",
+    location:         BaseValue[String] = LOCATION,
+    project_id:       BaseValue[String] = PROJECT_ID,
     connector_params: ConnectorParams = ConnectorParams(false)
 )
