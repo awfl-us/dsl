@@ -10,6 +10,10 @@ ThisBuild / dynverSonatypeSnapshots := true         // append -SNAPSHOT for non-
 // Default tag prefix is "v"; keep it to match our CI trigger
 // ThisBuild / dynverTagPrefix := "v"
 
+// Pin Sonatype to s01 host to avoid redirect loops and ensure correct resolver selection
+ThisBuild / sonatypeCredentialHost := "s01.oss.sonatype.org"
+ThisBuild / publishTo := sonatypePublishTo.value
+
 // Project metadata required by Maven Central
 ThisBuild / description := "Workflow DSL for Scala 3: typed values, CEL expressions, and declarative steps to build readable, testable pipelines."
 ThisBuild / homepage := Some(url("https://github.com/awfl-us/dsl"))

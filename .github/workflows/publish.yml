@@ -45,9 +45,24 @@ jobs:
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
         run: |
           echo "SONATYPE_HOST=${SONATYPE_HOST:-unset}"
-          sbt -v -no-colors "show version" "show isSnapshot" "show sonatypeCredentialHost" "show publishTo"
+          sbt -v -no-colors \
+            "show version" \
+            "show isSnapshot" \
+            "show sonatypeCredentialHost" \
+            "show publishTo" \
+            "show organization" \
+            "show moduleName" \
+            "show publishMavenStyle"
+
           echo "Checking direct access/redirects to snapshot repo base..."
           curl -s -o /dev/null -D - -L --max-redirs 10 https://s01.oss.sonatype.org/content/repositories/snapshots/ | sed -n '1,50p'
+
+          echo "Checking authenticated access to your organization path on snapshots..."
+          ORG=$(sbt -error -no-colors "print organization" | tail -n 1)
+          ORG_PATH=${ORG//./\/}
+          echo "ORG=${ORG} ORG_PATH=${ORG_PATH}"
+          curl -s -o /dev/null -D - -L --max-redirs 10 -u "$SONATYPE_USERNAME:$SONATYPE_PASSWORD" \
+            "https://s01.oss.sonatype.org/content/repositories/snapshots/${ORG_PATH}/" | sed -n '1,80p'
 
       - name: Publish via sbt-ci-release (debug)
         env:
@@ -57,4 +72,7 @@ jobs:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
         run: |
-          sbt -no-colors -Dsbt.supershell=false -debug "set Global / logLevel := Level.Debug" ci-release
+          sbt -no-colors -Dsbt.supershell=false -debug \
+            "set Global / logLevel := Level.Debug" \
+            "set Global / ivyLoggingLevel := UpdateLogging.Full" \
+            ci-release
