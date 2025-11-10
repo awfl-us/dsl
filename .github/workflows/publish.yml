@@ -42,5 +42,5 @@ jobs:
           PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-          SONATYPE_HOST: s01.oss.sonatype.org
+          SONATYPE_HOST: central.sonatype.com
         run: sbt ci-release
