@@ -1,197 +1,183 @@
-dsl — Workflow DSL for Scala 3
+# dsl — Workflow DSL for Scala 3
 
-A compact, type-safe DSL to model workflows as pure data. It gives you three core building blocks:
-- Values: typed, addressable data (scalars, objects, lists) backed by Resolvers
-- CEL expressions: composable expressions over values (comparisons, math, string ops, function calls)
-- Steps: declarative control-flow nodes that produce Values you can wire together
+![Scala](https://img.shields.io/badge/Scala-3.3.1-red?logo=scala)
+![Version](https://img.shields.io/badge/version-0.1.0--SNAPSHOT-lightgrey)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Status](https://img.shields.io/badge/status-alpha-blue)
 
-This README is a practical guide to using Values, CEL, and Steps.
+A compact, type-safe DSL for describing workflows as pure data in Scala 3. Compose typed values, CEL expressions, and declarative steps to build readable, testable pipelines you can interpret any way you like.
 
-Install (SBT)
+- Strongly-typed values and specs that map to your domain models
+- Composable CEL expressions for selection, math, and string ops
+- Declarative step graph for calls, loops, folds, branching, and error handling
+- Pure description: interpret to JSON/YAML, send to an engine, or run in your own runtime
+
+---
+
+## Table of contents
+- [Features](#features)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Concepts at a glance](#concepts-at-a-glance)
+- [Usage](#usage)
+  - [Values](#values)
+  - [CEL](#cel)
+  - [Steps](#steps)
+- [Step catalog (overview)](#step-catalog-overview)
+- [End-to-end example](#end-to-end-example)
+- [Releases and versioning](#releases-and-versioning)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Features
+- Type-safe Value and ListValue abstractions backed by Resolvers and Specs
+- CEL expressions via operators and helpers (===, &&, +, len, encodeJson, …)
+- Rich step set: Call, Log, Return, Raise, For, ForRange, Fold, Switch, Try, Block, FlatMap
+- Optional values/lists with defaults (OptValue, OptList)
+- Utilities for list building and composition (buildList, buildValueList, join, joinSteps)
+
+## Installation
+SBT coordinates:
+
 - Organization: us.awfl
 - Module: dsl
 - Scala: 3.3.1
 - Version: 0.1.0-SNAPSHOT (use the latest release when available)
 
+In build.sbt:
+
+```scala
 libraryDependencies += "us.awfl" %% "dsl" % "0.1.0-SNAPSHOT"
+```
 
 If building locally first:
-- In this repo: sbt publishLocal
-- In your project: resolvers += Resolver.mavenLocal
 
-Concepts at a glance
-- Value[T]: a typed handle pointing at data (input, intermediate, or computed)
+```bash
+sbt publishLocal
+```
+
+Then in your project:
+
+```scala
+resolvers += Resolver.mavenLocal
+```
+
+## Quick start
+```scala
+import us.awfl.dsl._
+import us.awfl.dsl.CelOps._       // operators and conversions to build CEL
+import us.awfl.dsl.auto.given     // derive Spec for case classes
+
+// Define a model using typed Values
+case class User(name: Value[String])
+
+// Anchor inputs at a root resolver (e.g., "input")
+val user: Value[User] = init[User]("input")
+val name: Value[String] = user.flatMap(_.name)
+
+// Build a small program that logs and produces a list
+val greetings: ListValue[String] = ForRange[String]("greetings", from = 0, to = 3) { i =>
+  val msg = str(("Hello, ": Cel) + name + " #" + i)
+  List(Log("log_msg", msg)) -> msg
+}.resultValue
+
+val program = Block("example", List(Log("log_user", name)) -> greetings)
+```
+
+## Concepts at a glance
+- Value[T]: typed handle pointing at data (input, intermediate, or computed)
 - ListValue[T]: a Value representing a list of T, indexable with a CEL index
 - Resolver: a path inside the workflow context used to bind/resolve Values
-- CEL: a small expression language used in conditions, math, selections, and construction of derived values
-- Step[T, V <: BaseValue[T]]: a unit of work that produces a V (commonly Value[T] or ListValue[T])
+- CEL: expression language used in conditions, math, selections, and derived values
+- Step[T, V <: BaseValue[T]]: unit of work that produces a V (Value[T] or ListValue[T])
 
-Import helpers
-import us.awfl.dsl._
-import us.awfl.dsl.CelOps._          // operators and conversions to build CEL
-import us.awfl.dsl.auto.given        // derive Spec for case classes
-
-Values: addressing and composing data
-- init[T: Spec](name): create an anchored Value[T] at a named root (e.g., "input")
-  val input = init[User]("input")
-
-- Base types
-  - BaseValue[T]: common supertype with .get (resolved via Spec) and .cel (CEL view)
-  - Value[T]: a resolved value at a Resolver path
-  - ListValue[T]: a resolved list; index via list(iCel) to get Value[T]
-  - Obj[T]: a literal inlined object/value; build with obj(value)
+## Usage
+### Values
+- Anchoring: `init[T: Spec](name)` creates a root-anchored Value[T]
+- Base types:
+  - BaseValue[T]: common supertype with `.get` and `.cel`
+  - Value[T]: resolved value at a Resolver path
+  - ListValue[T]: resolved list; index via `list(iCel)` to get `Value[T]`
+  - Obj[T]: literal inlined object/value; build with `obj(value)`
   - Field: a string field reference at the current Resolver
+- Resolvers:
+  - `resolver.in[T]("field")` nests a value
+  - `resolver.list[T]("items")` nests a list
+  - `Resolver("input")` creates a named root
+- Case class navigation:
+```scala
+case class User(name: Value[String], id: Value[String])
+val user = init[User]("input")
+val name: Value[String] = user.flatMap(_.name)
+```
+- Literals and derived values:
+  - `obj(42)` produces a literal `BaseValue[Int]`
+  - `Value[T](cel: Cel)` wraps CEL as a `Value[T]`
+  - `str(cel: Cel)` creates a `Value[String]` from CEL
+- Optional values/lists with defaults:
+```scala
+val maybeName = OptValue[String](user.resolver.in[String]("nickname")).getOrElse(name)
+val safeList  = OptList[String](Resolver("input").list[String]("tags")).getOrElse(ListValue.empty[String])
+```
 
-- Resolver basics
-  - Build a Value nested under a field: resolver.in[T]("field")
-  - Build a ListValue nested under a field: resolver.list[T]("items")
-  - Create a root resolver for a name: Resolver("input")
+### CEL
+Build CEL by combining Values, literals, and operators from `CelOps`.
+- Operators: `===, !==, >, >=, <, <=, &&, ||, +, -, *, /, %`
+- Helpers: `len(list)`, `encodeJson(value)`
+- Turn a CEL expression into a Value:
+```scala
+val greeting: Value[String] = str(("Hello, ": Cel) + name)
+```
 
-- Accessing nested fields via case classes
-  Define models with Value[...] fields and derive a Spec:
-  case class User(name: Value[String], id: Value[String])
-  val user: Value[User] = init[User]("input")
-  val name: Value[String] = user.flatMap(_.name)
+### Steps
+Steps produce values you can thread into later steps.
+- Compose with `resultValue` or via `flatMap` on Value-producing steps
+- Group and return with `Block`
 
-- Literal and derived values
-  - obj(42): BaseValue[Int] as a literal
-  - Value[T](cel: Cel): wrap a CEL expression as a Value[T]
-  - str(cel: Cel): Value[String] from a CEL expression
-
-- Lists and utilities
-  - list(i): Index into a ListValue with a CEL index to get Value[T]
-  - len(list): Cel — length of a list
-  - buildList(name, List(a,b,c)): Step that yields ListValue[T] from Scala constants
-  - buildValueList(name, List(v1,v2)): like buildList but from BaseValue[T]
-  - join(name, lists*): Step that concatenates multiple lists into one ListValue[T]
-  - joinSteps(steps*): Step that joins the resultValue of multiple list-producing steps
-
-- Optional values/lists with defaults
-  - OptValue[T](resolver).getOrElse(default: BaseValue[T]) -> BaseValue[T]
-  - OptList[T](resolver).getOrElse(default: ListValue[T]) -> ListValue[T]
-  Examples:
-  val maybeName = OptValue[String](user.resolver.in[String]("nickname")).getOrElse(name)
-  val safeList  = OptList[String](Resolver("input").list[String]("tags")).getOrElse(ListValue.empty[String])
-
-CEL: expressions you can compose
-- You write CEL by combining Values, literals, and operators via CelOps. A BaseValue[T] exposes .cel, and implicit conversions let you write natural expressions.
-
-- Common operators (non-exhaustive)
-  - Equality/relational: a === b, a !== b, a > b, a >= b, a < b, a <= b
-  - Boolean: cond1 && cond2, cond1 || cond2
-  - Arithmetic: a + b, a - b, a * b, a / b, a % b
-  - String build: ("Hello, ": Cel) + name + "!"  // coerce strings to Cel then concatenate
-
-- Useful CEL functions available via helpers in this module
-  - len(list): Cel
-  - encodeJson(value): Cel, uses json.encode_to_string
-  - default(value, fallback) is used internally by OptValue/OptList
-  - map.get and list indexing are represented in the CEL AST (CelFunc, CelAt, CelPath)
-
-- Turn a CEL expression into a Value
-  val greeting: Value[String] = str(("Hello, ": Cel) + name)
-
-Steps: building workflows
-- Anatomy
-  trait Step[T, +V <: BaseValue[T]] {
-    val name: String
-    def resultValue: V   // feed this into other steps
-    def result: T        // Materialize via Spec[T] (for interpretation/serialization)
-  }
-
-- Compose steps by wiring their resultValue into later steps or by using .flatMap on steps that extend ValueStep.
-
-Step catalog and usage
+## Step catalog (overview)
 - Call[In, Out]
-  - Purpose: represent an external call/invocation.
-  - Signature: Call(name: String, call: String, args: BaseValue[In]) extends Step[Out, Value[Out]] with ValueStep[Out]
+  - External invocation.
   - Example:
+    ```scala
     case class Params(id: Value[String])
     case class Response(body: Value[String])
     val req = obj(Params(id = user.flatMap(_.id)))
     val fetch = Call[Params, Response]("fetchUser", "service.user.fetch", req)
     val body: Value[String] = fetch.flatMap(_.body)
-
-- Log (convenience over Call)
-  - Purpose: write a log line.
-  - Usage: val log = Log("greet", str(("Hello ": Cel) + name))
-
+    ```
+- Log
+  - Convenience around Call to write a log line.
+  - `val log = Log("greet", str(("Hello ": Cel) + name))`
 - Return[T]
-  - Purpose: model returning from the current scope/pipeline.
-  - Usage: Return("done", obj(Map("status" -> obj("ok"))))
-
+  - Model returning from the current scope/pipeline.
 - Raise
-  - Purpose: raise an Error with message and code.
-  - Example:
-    val err = obj(Error(message = str("missing input"), code = str("BadRequest")))
-    val raise = Raise("fail", err)
-
+  - Raise an Error with message and code.
 - For[In, Out]
-  - Purpose: map over a ListValue[In] to produce a ListValue[Out].
-  - Builder: For(name, inList) { item => (steps, elementValue) }
-  - Example:
-    val items: ListValue[String] = Resolver("input").list[String]("names")
-    val upper: Step[String, ListValue[String]] = For("toUpper", items) { item =>
-      val up = str(item.cel.call("toUpperCase")) // or your own CEL function
-      List(Log("log_each", up)) -> up
-    }
-    val upperList: ListValue[String] = upper.resultValue
-
+  - Map over a `ListValue[In]` to produce a `ListValue[Out]`.
 - ForRange[Out]
-  - Purpose: index-based loop from from (inclusive) to to (exclusive) producing a ListValue[Out].
-  - Builder: ForRange(name, from: Cel, to: Cel) { idx => (steps, elementValue) }
-  - Example:
-    val greetings = ForRange[String]("greetings", from = 0, to = 3) { i =>
-      val msg = str(("Hello #": Cel) + i)
-      List(Log("log_msg", msg)) -> msg
-    }.resultValue
-
+  - Index-based loop from `from` (inclusive) to `to` (exclusive).
 - Fold[B, T]
-  - Purpose: reduce a list into a single accumulator of type B.
-  - Builder: Fold(name, initial: BaseValue[B], list: ListValue[T]) { (acc, item) => (steps, nextAcc) }
-  - Example (sum ints):
-    val ints: ListValue[Int] = Resolver("input").list[Int]("nums")
-    val sumStep = Fold[Int, Int]("sum", obj(0), ints) { (acc, i) =>
-      List() -> Value[Int](acc.cel + i)
-    }
-    val sum: BaseValue[Int] = sumStep.resultValue
-
+  - Reduce a list into a single accumulator of type `B`.
 - Switch[T, V <: BaseValue[T]]
-  - Purpose: choose the first matching case based on CEL conditions, producing V.
-  - Example:
-    val choose = Switch[String, Value[String]](
-      name = "choose",
-      cases = List(
-        (name.cel === "alice") -> (List() -> str("hi alice")),
-        (name.cel === "bob")   -> (List() -> str("hi bob")),
-        (true: Cel)             -> (List() -> str("hi there"))
-      )
-    )
-
+  - Choose the first matching case based on CEL conditions.
 - Try[T, V <: BaseValue[T]]
-  - Purpose: run a block and handle failures; except callback receives a typed Error value.
-  - Builder: Try(name, run = (steps, resultValue)) with optional except: err => (steps, fallback)
-  - Example:
-    val risky = Call[Params, Response]("risky", "service.risky", req)
-    val safe  = Try[Response, Value[Response]](
-      name = "safe",
-      run = List(risky) -> risky.resultValue
-    )
-
+  - Run a block and handle failures; `except` receives a typed Error value.
 - Block[T, V]
-  - Purpose: group steps and explicitly surface an output value.
-  - Example:
-    val block = Block("group", List(Log("start", str("ok"))), greetings)
-
+  - Group steps and explicitly surface an output value.
 - FlatMap
-  - Purpose: produced by ValueStep.flatMap to transform a step result into another value/step while preserving chaining semantics.
-  - Example: val body: Value[String] = fetch.flatMap(_.body)
+  - Provided by `ValueStep` to chain transformations.
 
-Composing pipelines
-- Each Step has a resultValue you can feed into later steps. Group multiple steps with Block when you need to return a specific value while keeping internal steps ordered.
-- When a Step mixes control flow and values (For, ForRange, Fold, Switch, Try), its resultValue is the thing you’ll thread forward (e.g., the resulting list or computed value).
+For more examples, see the deep dive below and the code snippets in this README.
 
-End-to-end mini example
+## End-to-end example
+```scala
+import us.awfl.dsl._
+import us.awfl.dsl.CelOps._
+import us.awfl.dsl.auto.given
+
 case class User(name: Value[String])
 val user = init[User]("input")
 val name = user.flatMap(_.name)
@@ -203,15 +189,49 @@ val greetings: ListValue[String] = ForRange[String]("greetings", 0, 3) { i =>
 }.resultValue
 
 val program = Block("example", List(Log("log_user", name)) -> greetings)
+```
 
-Notes on interpretation/serialization
-- This DSL is descriptive. You can interpret Steps/Values/CEL however you like (e.g., compile to YAML/JSON, send to an engine, or evaluate in a custom runtime).
-- Specs (Spec[T]) define how to resolve/marshal types from Resolver paths; import us.awfl.dsl.auto.given for case-class derivation.
+## Releases and versioning
+This repo automatically tags and publishes on every merge to the default branch.
 
-Build
-- sbt compile
-- sbt test
-- sbt publishLocal
+- Version source: sbt-dynver derives versions from Git tags (vX.Y.Z). Non-tag builds publish SNAPSHOTs with -SNAPSHOT.
+- Tagging and GitHub Releases: semantic-release runs on pushes to main/master and creates a new vX.Y.Z tag and GitHub Release based on conventional commits since the last release.
+- Publishing: sbt-ci-release publishes snapshots on any branch push and publishes a full release when a v* tag is created.
 
-License
-MIT (see LICENSE).
+Conventional commits
+- Use conventional commits so semantic-release can determine the next version.
+  - feat: -> minor
+  - fix:, perf:, revert:, refactor:, docs:, style:, test:, build:, ci:, chore:, deps: -> patch
+  - BREAKING CHANGE: in body or ! after type -> major
+- To intentionally skip a release, use the scope "no-release", e.g., `chore(no-release): update dev tooling`.
+
+How releases flow (no PRs required)
+1) Merge PRs to main/master using conventional commit messages.
+2) semantic-release computes the next version, pushes a vX.Y.Z tag, and creates a GitHub Release.
+3) The tag triggers CI (`sbt ci-release`) to publish to Maven Central.
+4) The push to main/master also publishes a SNAPSHOT for the same commit (expected and harmless).
+
+Required secrets (for publishing)
+- SONATYPE_USERNAME, SONATYPE_PASSWORD, PGP_SECRET (base64 ASCII-armored), PGP_PASSPHRASE
+
+## Development
+- Build: `sbt compile`
+- Test: `sbt test`
+- Publish locally: `sbt publishLocal`
+
+Project structure
+- Scala version: 3.3.1
+- Organization: `us.awfl`
+- Module name: `dsl`
+
+## Contributing
+Contributions are welcome! If you find a bug or have an idea:
+- Open an issue describing the problem or proposal
+- Or submit a pull request with a concise description and tests if relevant
+
+Before contributing, please:
+- Run the test suite locally (`sbt test`)
+- Keep public APIs small and well-documented with scaladoc and examples
+
+## License
+MIT — see [LICENSE](LICENSE).
