@@ -36,11 +36,25 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
 
-      - name: Publish via sbt-ci-release
+      - name: Diagnostics: verify Sonatype target
         env:
+          SONATYPE_HOST: s01.oss.sonatype.org
           PGP_SECRET: ${{ secrets.PGP_SECRET }}
           PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-          SONATYPE_HOST: central.sonatype.com
-        run: sbt ci-release
+        run: |
+          echo "SONATYPE_HOST=${SONATYPE_HOST:-unset}"
+          sbt -v -no-colors "show version" "show isSnapshot" "show sonatypeCredentialHost" "show publishTo"
+          echo "Checking direct access/redirects to snapshot repo base..."
+          curl -s -o /dev/null -D - -L --max-redirs 10 https://s01.oss.sonatype.org/content/repositories/snapshots/ | sed -n '1,50p'
+
+      - name: Publish via sbt-ci-release (debug)
+        env:
+          SONATYPE_HOST: s01.oss.sonatype.org
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+        run: |
+          sbt -no-colors -Dsbt.supershell=false -debug "set Global / logLevel := Level.Debug" ci-release
