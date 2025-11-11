@@ -1,32 +1,12 @@
-# Unified release workflow: Auto-tag every commit + sbt-ci-release
-#
-# This workflow creates a new version tag on every push to main and publishes
-# a full release to Maven Central (via sbt-ci-release) and a GitHub Release.
-#
-# We let the tag push trigger the publish so sbt-ci-release runs in true
-# "tag" context (GITHUB_REF=refs/tags/...). The branch push run only creates
-# the tag and exits quickly; the tag run performs the publish.
-#
-# Secrets required (add in GitHub repo → Settings → Secrets and variables → Actions):
-# - SONATYPE_USERNAME: Central Portal Publishing token username
-# - SONATYPE_PASSWORD: Central Portal Publishing token password/secret
-# - PGP_SECRET: ASCII-armored private key (base64 recommended) used to sign artifacts
-# - PGP_PASSPHRASE: passphrase for the above key
-#
-# Notes:
-# - Uses sbt 1.11.x and sbt-ci-release 1.11.x+ which publish via the Central Portal.
-# - Tags are of the form vX.Y.Z; sbt-dynver picks them up for the release version.
-
-name: CI Publish
+name: Release on every commit
 
 on:
   push:
     branches: [ main, master ]
-    tags: [ 'v*' ]
   workflow_dispatch:
 
 permissions:
-  contents: write  # required to push tags and create GitHub Releases
+  contents: write
 
 jobs:
   release:
@@ -35,43 +15,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # needed for dynver and version/tag discovery
+          fetch-depth: 0
 
-      # ---- Branch push: create the next tag and exit ----
-      - name: Configure Git author (for tagging)
-        if: github.ref_type == 'branch'
-        run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
+      - name: Auto-bump and tag (patch)
+        id: tag
+        uses: anothrNick/github-tag-action@1.68.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          default_bump: patch
+          tag_prefix: v
+          release_branches: main,master
 
-      - name: Determine and create next tag (auto on every commit)
-        if: github.ref_type == 'branch'
-        run: |
-          set -euo pipefail
-          git fetch --tags --force --prune
-          # If this commit already has a tag, do nothing (re-run scenario)
-          if git describe --tags --exact-match >/dev/null 2>&1; then
-            echo "HEAD already has a tag; nothing to do"
-            exit 0
-          fi
-          last=$(git tag -l 'v[0-9]*' --sort=-v:refname | head -n1)
-          if [[ -z "$last" ]]; then
-            version="0.1.0"
-          else
-            ver=${last#v}
-            IFS='.' read -r major minor patch <<< "$ver"
-            patch=$((patch+1))
-            version="$major.$minor.$patch"
-          fi
-          tag="v$version"
-          echo "Creating tag $tag"
-          git tag -a "$tag" -m "Release $tag (auto)"
-          git push origin "$tag"
-          echo "Tag $tag pushed"
-
-      # ---- Tag push: publish a release ----
       - name: Set up Java
-        if: github.ref_type == 'tag'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -79,18 +35,15 @@ jobs:
           cache: sbt
 
       - name: Set up sbt
-        if: github.ref_type == 'tag'
         uses: sbt/setup-sbt@v1
 
       - name: Import GPG key
-        if: github.ref_type == 'tag'
         uses: crazy-max/ghaction-import-gpg@v6
         with:
           gpg_private_key: ${{ secrets.PGP_SECRET }}
           passphrase: ${{ secrets.PGP_PASSPHRASE }}
 
       - name: Publish via sbt-ci-release (Central Portal)
-        if: github.ref_type == 'tag'
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
@@ -100,10 +53,9 @@ jobs:
           sbt -no-colors -Dsbt.supershell=false ci-release
 
       - name: Create GitHub Release
-        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ steps.tag.outputs.new_tag }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
