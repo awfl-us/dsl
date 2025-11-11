@@ -50,6 +50,7 @@ SBT coordinates:
 In build.sbt:
 
 ```scala
+libraryDependencies += "us.awfl" %% "dsl" % "0.1.0-SNAPSHOT"
 ```
 
 If building locally first:

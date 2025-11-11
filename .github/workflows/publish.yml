@@ -1,26 +1,31 @@
-# CI Publish to Maven Central via Sonatype Central Portal
+# Unified release workflow: Semantic Release + sbt-ci-release
+#
+# This single workflow performs both:
+# 1) Runs semantic-release to determine the next version and create/push a tag and GitHub Release (if needed)
+# 2) Publishes to Sonatype Central (snapshots on regular commits; full release when a tag exists)
 #
 # Secrets required (add in GitHub repo → Settings → Secrets and variables → Actions):
-# - SONATYPE_USERNAME: Central Portal Publishing token username (from central.sonatype.com → Account → Tokens → Create Token → Publishing)
+# - SONATYPE_USERNAME: Central Portal Publishing token username
 # - SONATYPE_PASSWORD: Central Portal Publishing token password/secret
 # - PGP_SECRET: ASCII-armored private key (base64 recommended) used to sign artifacts
 # - PGP_PASSPHRASE: passphrase for the above key
 #
 # Notes:
-# - Using sbt 1.11.x and sbt-ci-release 1.11.x+ which publish via the Central Portal (not legacy OSSRH/s01).
-# - Use SONATYPE_USERNAME/SONATYPE_PASSWORD set to your Central Publishing token.
-# - No SONATYPE_HOST is needed; do not configure sonatypeCredentialHost or publishTo in build.sbt.
+# - Uses sbt 1.11.x and sbt-ci-release 1.11.x+ which publish via the Central Portal.
+# - No SONATYPE_HOST is needed; do not set sonatypeCredentialHost or publishTo in build.sbt.
+# - We intentionally do NOT trigger on tag pushes; semantic-release creates a tag in this same workflow, and we fetch it locally before running sbt.
 
 name: CI Publish
 
 on:
   push:
     branches: [ main, master ]
-    tags:
-      - v*
+
+permissions:
+  contents: write  # required for semantic-release to create releases/tags
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,6 +33,25 @@ jobs:
         with:
           fetch-depth: 0  # needed for dynver and release versioning
 
+      # --- Semantic Release (creates GitHub tag/release when applicable) ---
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Semantic Release
+        id: semrel
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          extra_plugins: |
+            conventional-changelog-conventionalcommits
+            @semantic-release/commit-analyzer
+            @semantic-release/release-notes-generator
+            @semantic-release/github
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- JVM toolchain for sbt publish ---
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -44,10 +68,15 @@ jobs:
           gpg_private_key: ${{ secrets.PGP_SECRET }}
           passphrase: ${{ secrets.PGP_PASSPHRASE }}
 
-      - name: Configure Git author (for sbt-ci-release tagging)
+      - name: Configure Git author (for sbt-ci-release annotating tags if needed)
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
+
+      - name: Fetch tags created by semantic-release
+        run: |
+          git fetch --tags --force --prune
+          git describe --tags --always || true
 
       - name: Diagnostics
         env:
