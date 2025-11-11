@@ -1,10 +1,11 @@
-# Unified release workflow: Semantic Release + sbt-ci-release
+# Unified release workflow: Auto-tag every commit + sbt-ci-release
 #
-# This single workflow performs both:
-# 1) Runs semantic-release to determine the next version and create/push a tag and GitHub Release (if needed)
-# 2) Publishes to Sonatype Central (snapshots on regular commits; full release when a tag exists)
+# This workflow creates a new version tag on every push to main and then
+# publishes a full release on the tag event. This ensures sbt-ci-release
+# runs in "release" mode (it detects refs/tags/*) and avoids the snapshot
+# guard you saw.
 #
-# Secrets required (add in GitHub repo → Settings → Secrets and variables → Actions):
+# Secrets required (GitHub repo → Settings → Secrets and variables → Actions):
 # - SONATYPE_USERNAME: Central Portal Publishing token username
 # - SONATYPE_PASSWORD: Central Portal Publishing token password/secret
 # - PGP_SECRET: ASCII-armored private key (base64 recommended) used to sign artifacts
@@ -12,46 +13,81 @@
 #
 # Notes:
 # - Uses sbt 1.11.x and sbt-ci-release 1.11.x+ which publish via the Central Portal.
-# - No SONATYPE_HOST is needed; do not set sonatypeCredentialHost or publishTo in build.sbt.
-# - We intentionally do NOT trigger on tag pushes; semantic-release creates a tag in this same workflow, and we fetch it locally before running sbt.
+# - We purposely keep branch and tag triggers; branch pushes only create a tag,
+#   and tag pushes publish. This avoids duplicate publishing.
 
 name: CI Publish
 
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
 
 permissions:
-  contents: write  # required for semantic-release to create releases/tags
+  contents: write  # required to push tags and create GitHub Releases
+
+concurrency:
+  group: release-pipeline
+  cancel-in-progress: false
 
 jobs:
-  release:
+  # Job A: on branch pushes, create and push the next version tag
+  auto_tag:
+    if: startsWith(github.ref, 'refs/heads/')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # needed for dynver and release versioning
+          fetch-depth: 0
 
-      # --- Semantic Release (creates GitHub tag/release when applicable) ---
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Configure Git author (for tagging)
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Determine and create next tag (auto on every commit)
+        run: |
+          set -euo pipefail
+          git fetch --tags --force --prune
+          # If this commit already has a tag, nothing to do (re-run scenario)
+          if git describe --tags --exact-match >/dev/null 2>&1; then
+            echo "HEAD already has a tag: $(git describe --tags --exact-match)" ; exit 0
+          fi
+          # Find last vX.Y.Z tag
+          last=$(git tag -l 'v[0-9]*' --sort=-v:refname | head -n1)
+          if [[ -z "$last" ]]; then
+            version="0.1.0"
+          else
+            ver=${last#v}
+            IFS='.' read -r major minor patch <<< "$ver"
+            patch=$((patch+1))
+            version="$major.$minor.$patch"
+          fi
+          tag="v$version"
+          # Ensure we don't collide with an existing remote tag (race-proofing)
+          while git ls-remote --tags origin | grep -qx ".*refs/tags/$tag"; do
+            ver=${tag#v}
+            IFS='.' read -r major minor patch <<< "$ver"
+            patch=$((patch+1))
+            tag="v$major.$minor.$patch"
+          done
+          echo "Creating tag $tag"
+          git tag -a "$tag" -m "Release $tag (auto)"
+          git push origin "$tag"
+
+  # Job B: on tag pushes, publish to Central and create a GitHub Release
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          node-version: 20
+          fetch-depth: 0
 
-      - name: Semantic Release
-        id: semrel
-        uses: cycjimmy/semantic-release-action@v4
-        with:
-          extra_plugins: |
-            conventional-changelog-conventionalcommits
-            @semantic-release/commit-analyzer
-            @semantic-release/release-notes-generator
-            @semantic-release/github
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # --- JVM toolchain for sbt publish ---
+      # JVM toolchain for sbt publish
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -68,27 +104,6 @@ jobs:
           gpg_private_key: ${{ secrets.PGP_SECRET }}
           passphrase: ${{ secrets.PGP_PASSPHRASE }}
 
-      - name: Configure Git author (for sbt-ci-release annotating tags if needed)
-        run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-
-      - name: Fetch tags created by semantic-release
-        run: |
-          git fetch --tags --force --prune
-          git describe --tags --always || true
-
-      - name: Diagnostics
-        env:
-          PGP_SECRET: ${{ secrets.PGP_SECRET }}
-          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
-        run: |
-          sbt -v -no-colors \
-            "show version" \
-            "show isSnapshot" \
-            "show organization" \
-            "show moduleName"
-
       - name: Publish via sbt-ci-release (Central Portal)
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
@@ -97,3 +112,11 @@ jobs:
           PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
         run: |
           sbt -no-colors -Dsbt.supershell=false ci-release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
