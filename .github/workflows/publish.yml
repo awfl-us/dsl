@@ -46,14 +46,19 @@ jobs:
           gpg_private_key: ${{ secrets.PGP_SECRET }}
           passphrase: ${{ secrets.PGP_PASSPHRASE }}
 
-      - name: Diagnostics show version and isSnapshot
+      - name: Diagnostics show tag detection and version
         run: |
+          echo "GITHUB_EVENT_NAME=$GITHUB_EVENT_NAME"
+          echo "GITHUB_REF (runner)=$GITHUB_REF"
+          echo "CI_TAG (if set)=$CI_TAG"
           sbt -no-colors -Dsbt.supershell=false "show version" "show isSnapshot"
 
       - name: Publish via sbt-ci-release (Central Portal)
         env:
-          # Force sbt-ci-release to treat this as a tag build
+          # Make sbt-ci-release treat this as a tag build even though the workflow was triggered by a branch push
           GITHUB_REF: refs/tags/${{ steps.tag.outputs.new_tag }}
+          CI_TAG: ${{ steps.tag.outputs.new_tag }}
+          CI: true
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
           PGP_SECRET: ${{ secrets.PGP_SECRET }}
