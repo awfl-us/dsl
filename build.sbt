@@ -4,10 +4,9 @@ ThisBuild / scalaVersion := "3.3.1"
 name := "dsl"
 organization := "us.awfl"
 
-// sbt-dynver: derive version from Git tags (e.g., v0.1.0) and commits for snapshots
+// sbt-dynver: derive version from Git tags (e.g., v0.1.0). CI publishes only on release tags.
 ThisBuild / versionScheme := Some("early-semver")
-ThisBuild / dynverSonatypeSnapshots := true         // append -SNAPSHOT for non-tag builds
-// Default tag prefix is "v"; keep it to match our CI trigger
+// Default tag prefix is "v"; keep it to match our release tags
 // ThisBuild / dynverTagPrefix := "v"
 
 // Project metadata required by Maven Central
