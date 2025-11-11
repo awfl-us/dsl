@@ -1,3 +1,16 @@
+# CI Publish to Maven Central via Sonatype Central Portal
+#
+# Secrets required (add in GitHub repo → Settings → Secrets and variables → Actions):
+# - SONATYPE_USERNAME: Central Portal Publishing token username (from central.sonatype.com → Account → Tokens → Create Token → Publishing)
+# - SONATYPE_PASSWORD: Central Portal Publishing token password/secret
+# - PGP_SECRET: ASCII-armored private key (base64 recommended) used to sign artifacts
+# - PGP_PASSPHRASE: passphrase for the above key
+#
+# Notes:
+# - Using sbt 1.11.x and sbt-ci-release 1.11.x+ which publish via the Central Portal (not legacy OSSRH/s01).
+# - Use SONATYPE_USERNAME/SONATYPE_PASSWORD set to your Central Publishing token.
+# - No SONATYPE_HOST is needed; do not configure sonatypeCredentialHost or publishTo in build.sbt.
+
 name: CI Publish
 
 on:
@@ -36,43 +49,22 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
 
-      - name: Diagnostics verify Sonatype target
+      - name: Diagnostics
         env:
-          SONATYPE_HOST: s01.oss.sonatype.org
           PGP_SECRET: ${{ secrets.PGP_SECRET }}
           PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
-          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
         run: |
-          echo "SONATYPE_HOST=${SONATYPE_HOST:-unset}"
           sbt -v -no-colors \
             "show version" \
             "show isSnapshot" \
-            "show sonatypeCredentialHost" \
-            "show publishTo" \
             "show organization" \
-            "show moduleName" \
-            "show publishMavenStyle"
+            "show moduleName"
 
-          echo "Checking direct access/redirects to snapshot repo base..."
-          curl -s -o /dev/null -D - -L --max-redirs 10 https://s01.oss.sonatype.org/content/repositories/snapshots/ | sed -n '1,50p'
-
-          echo "Checking authenticated access to your organization path on snapshots..."
-          ORG=$(sbt -error -no-colors "print organization" | tail -n 1)
-          ORG_PATH=${ORG//./\/}
-          echo "ORG=${ORG} ORG_PATH=${ORG_PATH}"
-          curl -s -o /dev/null -D - -L --max-redirs 10 -u "$SONATYPE_USERNAME:$SONATYPE_PASSWORD" \
-            "https://s01.oss.sonatype.org/content/repositories/snapshots/${ORG_PATH}/" | sed -n '1,80p'
-
-      - name: Publish via sbt-ci-release (debug)
+      - name: Publish via sbt-ci-release (Central Portal)
         env:
-          SONATYPE_HOST: s01.oss.sonatype.org
-          PGP_SECRET: ${{ secrets.PGP_SECRET }}
-          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
         run: |
-          sbt -no-colors -Dsbt.supershell=false -debug \
-            "set Global / logLevel := Level.Debug" \
-            "set Global / ivyLoggingLevel := UpdateLogging.Full" \
-            ci-release
+          sbt -no-colors -Dsbt.supershell=false ci-release
