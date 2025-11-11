@@ -1,7 +1,7 @@
 # dsl — Workflow DSL for Scala 3
 
 ![Scala](https://img.shields.io/badge/Scala-3.3.1-red?logo=scala)
-![Version](https://img.shields.io/badge/version-0.1.0--SNAPSHOT-lightgrey)
+[![Maven Central](https://img.shields.io/maven-central/v/us.awfl/dsl_3?label=latest)](https://central.sonatype.com/artifact/us.awfl/dsl_3)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Status](https://img.shields.io/badge/status-alpha-blue)
 
@@ -45,12 +45,11 @@ SBT coordinates:
 - Organization: us.awfl
 - Module: dsl
 - Scala: 3.3.1
-- Version: 0.1.0-SNAPSHOT (use the latest release when available)
+- Version: see the badge above for the latest release
 
 In build.sbt:
 
 ```scala
-libraryDependencies += "us.awfl" %% "dsl" % "0.1.0-SNAPSHOT"
 ```
 
 If building locally first:
