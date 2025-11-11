@@ -46,8 +46,14 @@ jobs:
           gpg_private_key: ${{ secrets.PGP_SECRET }}
           passphrase: ${{ secrets.PGP_PASSPHRASE }}
 
+      - name: Diagnostics show version and isSnapshot
+        run: |
+          sbt -no-colors -Dsbt.supershell=false "show version" "show isSnapshot"
+
       - name: Publish via sbt-ci-release (Central Portal)
         env:
+          # Force sbt-ci-release to treat this as a tag build
+          GITHUB_REF: refs/tags/${{ steps.tag.outputs.new_tag }}
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
           PGP_SECRET: ${{ secrets.PGP_SECRET }}
