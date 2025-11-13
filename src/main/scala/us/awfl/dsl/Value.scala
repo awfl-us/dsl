@@ -114,9 +114,9 @@ def join[T: Spec](name: String, lists: ListValue[T]*): Step[T, ListValue[T]] = {
   }
 }
 
-def joinSteps[T: Spec](steps: Step[T, ListValue[T]]*): Step[T, ListValue[T]] = {
-  val joinAll = join("joinSteps", steps.map(_.resultValue): _*)
-  Block("joinSteps", (steps.toList :+ joinAll) -> joinAll.resultValue)
+def joinSteps[T: Spec](name: String, steps: Step[T, ListValue[T]]*): Step[T, ListValue[T]] = {
+  val joinAll = join(s"${name}_joinSteps", steps.map(_.resultValue): _*)
+  Block(s"${name}_joinSteps", (steps.toList :+ joinAll) -> joinAll.resultValue)
 }
 
 type NoValueT = Map[String, String]

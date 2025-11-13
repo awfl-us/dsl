@@ -25,6 +25,11 @@ ThisBuild / developers := List(
 )
 ThisBuild / pomIncludeRepository := { _ => false }
 
+ThisBuild / version ~= { v =>
+  if (sys.env.get("CI").contains("true")) v
+  else "0.1.0-SNAPSHOT"
+}
+
 // Dependencies
 libraryDependencies ++= Seq(
   "io.circe" %% "circe-core"    % "0.14.7",

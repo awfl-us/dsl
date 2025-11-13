@@ -90,15 +90,23 @@ object Fold {
 
 case class Switch[T: Spec, V <: BaseValue[T]](name: String, cases: List[(Cel, (List[Step[_, _]], V))])(using valueInit: ValueInit[T, V]) extends Step[T, V] with ValueStep[T]
 
-case class Try[T: Spec, V <: BaseValue[T]](name: String, run: (List[Step[_, _]], V), except: Resolved[Error] => (List[Step[_, _]], V))(using valueInit: ValueInit[T, V]) extends Step[T, V] with ValueStep[T]
+case class Try[T: Spec, V <: BaseValue[T]](name: String, run: (List[Step[_, _]], V), error: Resolved[Error], except: (List[Step[_, _]], V))(using valueInit: ValueInit[T, V]) extends Step[T, V] with ValueStep[T]
 object Try {
+  def apply[T: Spec, V <: BaseValue[T]](
+    name: String,
+    run: (List[Step[_, _]], V), 
+    except: Resolved[Error] => (List[Step[_, _]], V)
+  )(using valueInit: ValueInit[T, V]): Try[T, V] = {
+    val error = init[Error](s"${name}Error")
+    Try(name, run, error, except(error))
+  }
+
   def apply[T: Spec, V <: BaseValue[T]](
     name: String,
     run: (List[Step[_, _]], V)
   )(using valueInit: ValueInit[T, V]): Try[T, V] =
-    new Try(name, run, err => List(Log(s"${name}_logError", err.flatMap(_.message))) -> valueInit("null"))
+    Try(name, run, err => List(Log(s"${name}_logError", err.flatMap(_.message))) -> valueInit("null"))
 }
-
 case class Error(message: BaseValue[String], code: BaseValue[String])
 implicit val errorSpec: Spec[Error] = Spec { resolver =>
   import resolver._
