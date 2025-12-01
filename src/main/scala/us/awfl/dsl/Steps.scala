@@ -33,13 +33,6 @@ object ValueInit:
     def apply(name: String): ListValue[T] = ListValue(Resolver(name))
   }
 
-object HexCounter {
-  private val counter = new AtomicLong(0L)
-
-  /** Returns the next counter value as a lowercase hexadecimal string. */
-  def next(): String = counter.getAndIncrement().toHexString
-}
-
 sealed trait Step[T, +V <: BaseValue[T]](using vi: ValueInit[T, V]) {
   val name: String
   def resultValue: V = vi(s"${name}Result_${(hashCode & 0x7FFFFFFF).toHexString}")
@@ -125,10 +118,7 @@ object Log {
 
 case class Block[T, V <: BaseValue[T]](name: String, run: (List[Step[_, _]], V))(using valueInit: ValueInit[T, V]) extends Step[T, V] with ValueStep[T] {
   val (steps, output) = run
-  override def resultValue: V = {
-    // throw new RuntimeException(s"Block result: ${output.cel}/${super.resultValue.cel}")
-    output
-  }
+  override def resultValue: V = output
 }
 
 case class FlatMap[T, U, V <: BaseValue[U]](name: String, step: Step[T, BaseValue[T]], resultVal: V)(using valueInit: ValueInit[U, V]) extends Step[U, V] with ValueStep[U] {

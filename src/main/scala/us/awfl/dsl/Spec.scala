@@ -11,7 +11,7 @@ implicit val doubleSpec: Spec[Double] = Spec(_ => 0.0) // added support for Doub
 implicit val boolSpec: Spec[Boolean] = Spec(_ => false)
 implicit def mapSpec[T]: Spec[Map[String, T]] = Spec(_ => Map())
 implicit def listSpec[T]: Spec[List[T]] = Spec(_ => List.empty)
-implicit def optValueSpec[T: Spec]: Spec[OptValue[T]] = Spec(resolver => OptValue(resolver))
+implicit def optValueSpec[T: Spec]: Spec[OptValue[T]] = Spec(resolver => OptResolved(resolver))
 implicit def optListSpec[T: Spec]: Spec[OptList[T]] = Spec(resolver => OptList(resolver))
 
 object auto:
@@ -76,3 +76,7 @@ object auto:
   trait LowPrioritySpecBuilder:
     given specBasedBuilder[T](using spec: Spec[T]): SpecBuilder[T] with
       def build(fieldName: String): Resolver => T = _.in(fieldName).get
+
+    given leafBaseValue: SpecBuilder[BaseValue[_]] with
+      def build(fieldName: String): Resolver => BaseValue[_] =
+        r => Value[Int](r.in[Int](fieldName))

@@ -11,14 +11,9 @@ sealed trait BaseValue[T] {
 }
 
 case class Resolver(path: CelPath = CelPath(List())) {
-  // val cel: String = path.mkString("")
-
   def field(name: String): Field = FieldValue(Resolver(path :+ CelConst(name)))
   def in[T: Spec](name: String): Value[T] = Value(Resolver(path :+ CelConst(name)))
   def list[T: Spec](name: String): ListValue[T] = ListValue(Resolver(path :+ CelConst(name)))
-  // def at(suffix: String): Resolver = Resolver(path :+ suffix)
-
-  // def ref: Field = Field(fullName)
 
   def :+(right: String): Resolver = Resolver(path :+ right)
 
@@ -32,9 +27,8 @@ def str(cel: Cel): Value[String] = Value(Resolver(CelPath(cel :: Nil)))
 
 def encodeJson(value: BaseValue[_]): Cel = CelFunc("json.encode_to_string", value.cel)
 
-trait Resolved[T] extends BaseValue[T] {
+sealed trait Resolved[T] extends BaseValue[T] {
   val resolver: Resolver
-  // val value: BaseValue[T]
 
   def ++:(left: Resolved[_]): Resolved[T]
 
@@ -53,7 +47,6 @@ object Field {
 }
 
 case class Value[T: Spec](resolver: Resolver) extends Resolved[T] {
-  // def value: BaseValue[T] = implicitly[Spec[T]].init(resolver)
   def copy(resolver1: Resolver): Value[T] = Value(resolver ++ resolver1)
   def get: T = implicitly[Spec[T]].init(resolver)
   override def ++:(left: Resolved[?]): Resolved[T] = Value(left.resolver ++ resolver)
@@ -66,8 +59,10 @@ object Value {
 
 case class Obj[T](value: T) extends BaseValue[T] {
   override def get: T = value
+
+  def base: BaseValue[T] = this
 }
-def obj[T](value: T): BaseValue[T] = Obj(value)
+def obj[T](value: T): Obj[T] = Obj(value)
 
 case class ListValue[T: Spec](resolver: Resolver) extends Resolved[T] { self =>
   private def at(i: Cel): Cel = CelAt(this, i)
@@ -83,7 +78,7 @@ object ListValue {
 }
 
 def buildList[T: Spec](name: String, list: List[T]): Step[T, ListValue[T]] = ForRange(name, 0, list.size) { i =>
-  val switchStep = Switch(s"${name}_switch", list.zipWithIndex.map { case (e, i2) =>
+  val switchStep = Switch[T, BaseValue[T]](s"${name}_switch", list.zipWithIndex.map { case (e, i2) =>
     (i === i2) -> (List() -> obj(e))
   })
 
@@ -124,9 +119,18 @@ implicit val noValSpec: Spec[NoValueT] = Spec(_ => sys.error("No value!"))
 type NoValue = Value[NoValueT]
 val noValue: Value[NoValueT] = Value.nil
 
+type AnyValueT = Map[String, Int]
+implicit val anyValueSpec: Spec[AnyValueT] = Spec(_ => Map())
+type AnyValue = Value[AnyValueT]
+
+type AnyObj = Obj[AnyValueT]
+
 implicit val nothingSpec: Spec[Nothing] = Spec(_ => sys.error("No spec for Nothing!"))
 
-case class OptValue[T: Spec](resolver: Resolver) {
+sealed trait OptValue[T] {
+  def getOrElse(default: BaseValue[T]): BaseValue[T]
+}
+case class OptResolved[T: Spec](resolver: Resolver) extends OptValue[T] {
   def getOrElse(default: BaseValue[T]): BaseValue[T] = resolver.path.path match {
     case single :: Nil => Value(CelFunc("default", single, default.cel))
     case multiple @ (_ :: _ :: _) => multiple.last match {
@@ -141,19 +145,21 @@ case class OptValue[T: Spec](resolver: Resolver) {
 
   val spec = summon[Spec[T]]
 }
+case class OptObj[T](obj: Obj[T]) extends OptValue[T] {
+  def getOrElse(default: BaseValue[T]): BaseValue[T] = obj
+}
 object OptValue {
-  // def apply[T: Spec](value: String): Value[T] = Value(Resolver(value))
-  def apply[T: Spec](cel: Cel): OptValue[T] = OptValue(Resolver(CelPath(List(cel))))
+  def apply[T: Spec](cel: Cel): OptValue[T] = OptResolved[T](Resolver(CelPath(List(cel))))
+  def apply[T: Spec](obj: Obj[T]): OptValue[T] = OptObj(obj)
   def nil[T: Spec]: OptValue[T] = OptValue(CelConst("null"))
 }
 
 case class OptList[T: Spec](resolver: Resolver) {
-  def getOrElse(default: ListValue[T]): ListValue[T] = ListValue(OptValue(resolver).getOrElse(default).cel)
+  def getOrElse(default: ListValue[T]): ListValue[T] = ListValue(OptResolved(resolver).getOrElse(default).cel)
 
   val spec = summon[Spec[T]]
 }
 object OptList {
-  // def apply[T: Spec](value: String): Value[T] = Value(Resolver(value))
   def apply[T: Spec](cel: Cel): OptList[T] = OptList(Resolver(CelPath(List(cel))))
   def nil[T: Spec]: OptList[T] = OptList(CelConst("null"))
 }
