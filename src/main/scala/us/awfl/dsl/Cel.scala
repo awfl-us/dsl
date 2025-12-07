@@ -57,8 +57,8 @@ object Cel {
   given Conversion[Boolean, Cel] with
     def apply(b: Boolean): Cel = CelConst(b.toString)
 
-  given Conversion[BaseValue[_], Cel] with
-    def apply(v: BaseValue[_]): Cel = CelValue(v)
+  given Conversion[Resolved[_], Cel] with
+    def apply(v: Resolved[_]): Cel = CelValue(v)
 }
 
 object CelOps {

@@ -36,8 +36,8 @@ object auto:
     def build(fieldName: String): Resolver => T
 
   object SpecBuilder extends LowPrioritySpecBuilder:
-    given fieldBuilder: SpecBuilder[Field] with
-      def build(fieldName: String): Resolver => Field = _.field(fieldName)
+    // given fieldBuilder: SpecBuilder[Field] with
+    //   def build(fieldName: String): Resolver => Field = _.field(fieldName)
 
     given stringBuilder: SpecBuilder[String] with
       def build(fieldName: String): Resolver => String = _ => "" // or better: _.string(fieldName)
