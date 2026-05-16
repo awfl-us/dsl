@@ -77,4 +77,25 @@ object CelOps {
     def &&(right: Cel): Cel = CelOp(left, "and", right)
     def ||(right: Cel): Cel = CelOp(left, "or", right)
     def unary_! : Cel = CelOp(CelConst("not"), "", left)
+
+  // Extension to build a Cel list constant from a Scala List
+  extension [A](xs: List[A])
+    def cel: CelConst =
+      val body = xs.map(renderListElem).mkString("[", ", ", "]")
+      CelConst(body)
+
+  // Renders individual list elements into CEL literal strings
+  private def renderListElem(a: Any): String = a match
+    case s: String => "\"" + CelStr(s).safe.content + "\""
+    case c: Char   => "\"" + CelStr(c.toString).safe.content + "\""
+    case b: Boolean => b.toString
+    case i: Byte => i.toString
+    case i: Short => i.toString
+    case i: Int => i.toString
+    case l: Long => l.toString
+    case f: Float => f.toString
+    case d: Double => d.toString
+    case xs: List[_] => xs.map(renderListElem).mkString("[", ", ", "]")
+    case null => "null"
+    case other => other.toString
 }

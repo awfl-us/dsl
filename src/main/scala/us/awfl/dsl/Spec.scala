@@ -66,7 +66,7 @@ object auto:
       def build(fieldName: String): Resolver => Resolved[T] = _.in(fieldName)
 
     given productBuilder[T](using Mirror.ProductOf[T], Spec[T]): SpecBuilder[T] with
-      def build(fieldName: String): Resolver => T = _.in(fieldName).get
+      def build(fieldName: String): Resolver => T = r => summon[Spec[T]].init(r.in(fieldName).resolver)
 
     given valueBuilder[T: Spec]: SpecBuilder[BaseValue[T]] with
       def build(fieldName: String): Resolver => BaseValue[T] = _.in(fieldName)
@@ -76,11 +76,11 @@ object auto:
         _ => Map.empty[String, V]
 
     given optionBuilder[T: Spec]: SpecBuilder[Option[T]] with
-      def build(fieldName: String): Resolver => Option[T] = r => Some(r.in(fieldName).get)
+      def build(fieldName: String): Resolver => Option[T] = r => Some(summon[Spec[T]].init(r.in(fieldName).resolver))
 
   trait LowPrioritySpecBuilder:
     given specBasedBuilder[T](using spec: Spec[T]): SpecBuilder[T] with
-      def build(fieldName: String): Resolver => T = _.in(fieldName).get
+      def build(fieldName: String): Resolver => T = r => summon[Spec[T]].init(r.in(fieldName).resolver)
 
     given leafBaseValue: SpecBuilder[BaseValue[_]] with
       def build(fieldName: String): Resolver => BaseValue[_] =

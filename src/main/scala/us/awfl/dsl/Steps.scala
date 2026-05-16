@@ -8,6 +8,7 @@ import io.circe.Json
 import CelOps._
 import java.util.concurrent.atomic.AtomicLong
 import scala.util.NotGiven
+import scala.annotation.implicitNotFound
 
 def init[T: Spec](name: String): Value[T] = {
   val resolver = Resolver(name)
@@ -50,17 +51,6 @@ sealed trait Step[T, +V <: BaseValue[T]](using vi: ValueInit[T, V]) {
   def fn = List(this) -> resultValue
 }
 
-// case class ValueStep[T](self: Step[T, Value[T]]) {
-//   import self._
-
-//   def flatMap[U: Spec, V <: BaseValue[U]](f: T => V)(using valueInit: ValueInit[U, V]): FlatMap[T, U, Resolved[U]] = 
-// }
-// given stepIsValueStep[T]: Conversion[
-//   Step[T, Value[T]],
-//   ValueStep[T]
-// ] with
-//   def apply(b: Step[T, Value[T]]): ValueStep[T] = ValueStep[T](b)
-
 extension[T](self: Step[T, Value[T]])
   def flatMapList[U: Spec](f: T => ListValue[U])(using ValueInit[U, ListValue[U]]): FlatMap[T, U, ListValue[U]] =
     FlatMap[T, U, ListValue[U]](self.name, self, self.resultValue.flatMap(f))
@@ -71,15 +61,6 @@ extension[T](self: Step[T, Value[T]])
     FlatMap[T, U, Value[U]](self.name, self, self.resultValue.flatMap(f))
 
   def result: T = self.resultValue.get
-
-// case class ResolvedStep[T](self: Step[T, Resolved[T]]) {
-//   import self._
-// }
-// given stepIsResolvedStep[T]: Conversion[
-//   Step[T, Resolved[T]],
-//   ResolvedStep[T]
-// ] with
-//   def apply(b: Step[T, Resolved[T]]): ResolvedStep[T] = ResolvedStep[T](b)
 
 case class Call[In, Out: Spec](name: String, call: String, args: BaseValue[In]) extends Step[Out, Value[Out]]
 
@@ -117,21 +98,17 @@ object Fold {
 
 case class Switch[T: Spec, V <: Resolved[T]] private (name: String, cases: List[(Cel, (List[Step[_, _]], ValueType[T, V]))])(using ng: NotGiven[V =:= Resolved[T]], valueInit: ValueInit[T, V]) extends Step[T, V]
 object Switch {
-  def apply[T: Spec, V <: BaseValue[T]](name: String, cases: List[(Cel, (List[Step[_, _]], V))])(using valueInit: ValueInit[T, Value[T]], ng: NotGiven[V <:< ListValue[T]]): Switch[T, Value[T]] =
+  @implicitNotFound("Switch.apply cannot be used when cases produce a ListValue[${T}]. Use Switch.list instead.")
+  trait NotListValue[T, V]
+  object NotListValue:
+    given mk[T, V](using NotGiven[V <:< ListValue[T]]): NotListValue[T, V] = new {}
+
+  def apply[T: Spec, V <: BaseValue[T]](name: String, cases: List[(Cel, (List[Step[_, _]], V))])(using valueInit: ValueInit[T, Value[T]], ng: NotListValue[T, V]): Switch[T, Value[T]] =
     Switch[T, Value[T]](name, cases)
 
   def list[T: Spec](name: String, cases: List[(Cel, (List[Step[_, _]], ListValue[T]))])(using ValueInit[T, ListValue[T]]): Switch[T, ListValue[T]] =
     Switch[T, ListValue[T]](name, cases)
 }
-
-// type ResultType[T, V <: BaseValue[T]] <: Resolved[T] = V match {
-//   // case BaseValue[T] => Value[T]
-//   case Obj[t] => Value[t]
-//   case Value[T] => Value[T]
-//   case ListValue[T] => ListValue[T]
-//   case _ => Value[T]
-// }
-// given listResult[T]: (ResultType[T, ListValue[T]] <:< ListValue[T]) = ???
 
 type ValueType[T, V <: Resolved[T]] <: BaseValue[T] = V match {
   case Value[T] => BaseValue[T]

@@ -28,7 +28,8 @@ def encodeJson(value: Resolved[_]): Cel = CelFunc("json.encode_to_string", value
 sealed trait Resolved[T: Spec] extends BaseValue[T] {
   val resolver: Resolver
   val cel = CelValue(this)
-  def get: T = implicitly[Spec[T]].init(resolver.unsafe)
+  val spec = implicitly[Spec[T]]
+  def get: T = spec.init(resolver.unsafe)
 
   def ++:(left: Resolved[_]): Resolved[T]
 }
