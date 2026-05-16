@@ -5,20 +5,17 @@ import scala.annotation.tailrec
 import us.awfl.dsl.CelOps._
 import scala.util.NotGiven
 
-sealed trait BaseValue[T] {
-  // def get: T
-  // def flatMap[U, V <: BaseValue[U]](f: T => V): V = f(get)
-  // val cel = CelValue(this)
-}
+sealed trait BaseValue[T]
 
-case class Resolver(path: CelPath = CelPath(List())) {
-  // def field(name: String): Field = FieldValue(Resolver(path :+ CelConst(name)))
-  def in[T: Spec](name: String): Value[T] = Value(Resolver(path :+ CelConst(name)))
-  def list[T: Spec](name: String): ListValue[T] = ListValue(Resolver(path :+ CelConst(name)))
+case class Resolver(path: CelPath = CelPath(List()), safe: Boolean = true) {
+  def in[T: Spec](name: String): Value[T] = Value(Resolver(path :+ CelConst(name), safe))
+  def list[T: Spec](name: String): ListValue[T] = ListValue(Resolver(path :+ CelConst(name), safe))
 
-  def :+(right: String): Resolver = Resolver(path :+ right)
+  def :+(right: String): Resolver = Resolver(path :+ right, safe)
 
-  def ++(other: Resolver): Resolver = Resolver(this.path ++ other.path)
+  def ++(other: Resolver): Resolver = Resolver(this.path ++ other.path, safe)
+
+  def unsafe: Resolver = copy(safe = false)
 }
 object Resolver {
   def apply(name: String): Resolver = Resolver(CelPath(CelConst(name) :: Nil))
@@ -31,23 +28,10 @@ def encodeJson(value: Resolved[_]): Cel = CelFunc("json.encode_to_string", value
 sealed trait Resolved[T: Spec] extends BaseValue[T] {
   val resolver: Resolver
   val cel = CelValue(this)
-  def get: T = implicitly[Spec[T]].init(resolver)
+  def get: T = implicitly[Spec[T]].init(resolver.unsafe)
 
   def ++:(left: Resolved[_]): Resolved[T]
-
-  // def field: Field = FieldValue(resolver)
 }
-
-// type Field = FieldValue
-// case class FieldValue(resolver: Resolver) extends Resolved[String] {
-//   override def get: String = sys.error("You can't get Nothing!")
-//   override def ++:(left: Resolved[_]): Resolved[String] = FieldValue(left.resolver ++ resolver)
-// }
-// object Field {
-//   def apply(cel: String): Field = FieldValue(Resolver(cel))
-//   def apply(cel: Cel): Field = FieldValue(Resolver(CelPath(cel :: Nil)))
-//   def str(cel: Cel): Value[String] = Value(Resolver(CelPath(cel :: Nil)))
-// }
 
 case class Value[T: Spec](resolver: Resolver) extends Resolved[T] {
   def copy(resolver1: Resolver): Value[T] = Value(resolver ++ resolver1)
@@ -65,10 +49,7 @@ object Value {
   def nil[T: Spec]: Value[T] = Value(CelConst("null"))
 }
 
-case class Obj[T](value: T) extends BaseValue[T] {
-
-  // def base: BaseValue[T] = this
-}
+case class Obj[T](value: T) extends BaseValue[T]
 def obj[T](value: T): Obj[T] = Obj(value)
 
 case class ListValue[T: Spec](resolver: Resolver) extends Resolved[T] { self =>

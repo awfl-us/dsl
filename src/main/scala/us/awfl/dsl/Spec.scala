@@ -3,14 +3,19 @@ package us.awfl.dsl
 import scala.deriving.Mirror
 import scala.compiletime.{erasedValue, summonInline, constValueTuple}
 
-case class Spec[T](init: Resolver => T)
+case class Spec[T](initIfSafe: Resolver => T, unsafe: Boolean = false) {
+  def init(resolver: Resolver): T = resolver.safe match {
+    case false if unsafe => sys.error(f"Unsafe value get: ${resolver.path.path}\nTry wrapping either this or a parent field in Value/ListValue.")
+    case _ => initIfSafe(resolver)
+  }
+}
 
-implicit val stringSpec: Spec[String] = Spec(_ => "")
-implicit val intSpec: Spec[Int] = Spec(_ => 0) // added support for Int
-implicit val doubleSpec: Spec[Double] = Spec(_ => 0.0) // added support for Double
-implicit val boolSpec: Spec[Boolean] = Spec(_ => false)
-implicit def mapSpec[T]: Spec[Map[String, T]] = Spec(_ => Map())
-implicit def listSpec[T]: Spec[List[T]] = Spec(_ => List.empty)
+implicit val stringSpec: Spec[String] = Spec(_ => "", unsafe = true)
+implicit val intSpec: Spec[Int] = Spec(_ => 0, unsafe = true) // added support for Int
+implicit val doubleSpec: Spec[Double] = Spec(_ => 0.0, unsafe = true) // added support for Double
+implicit val boolSpec: Spec[Boolean] = Spec(_ => false, unsafe = true)
+implicit def mapSpec[T]: Spec[Map[String, T]] = Spec(_ => Map(), unsafe = true)
+implicit def listSpec[T]: Spec[List[T]] = Spec(_ => List.empty, unsafe = true)
 implicit def optValueSpec[T: Spec]: Spec[OptValue[T]] = Spec(resolver => OptResolved(resolver))
 implicit def optListSpec[T: Spec]: Spec[OptList[T]] = Spec(resolver => OptList(resolver))
 
@@ -39,17 +44,17 @@ object auto:
     // given fieldBuilder: SpecBuilder[Field] with
     //   def build(fieldName: String): Resolver => Field = _.field(fieldName)
 
-    given stringBuilder: SpecBuilder[String] with
-      def build(fieldName: String): Resolver => String = _ => "" // or better: _.string(fieldName)
+    // given stringBuilder: SpecBuilder[String] with
+    //   def build(fieldName: String): Resolver => String = _ => "" // or better: _.string(fieldName)
 
-    given intBuilder: SpecBuilder[Int] with
-      def build(fieldName: String): Resolver => Int = _ => 0
+    // given intBuilder: SpecBuilder[Int] with
+    //   def build(fieldName: String): Resolver => Int = _ => 0
 
-    given doubleBuilder: SpecBuilder[Double] with
-      def build(fieldName: String): Resolver => Double = _ => 0.0
+    // given doubleBuilder: SpecBuilder[Double] with
+    //   def build(fieldName: String): Resolver => Double = _ => 0.0
 
-    given boolBuilder: SpecBuilder[Boolean] with
-      def build(fieldName: String): Resolver => Boolean = _ => false
+    // given boolBuilder: SpecBuilder[Boolean] with
+    //   def build(fieldName: String): Resolver => Boolean = _ => false
 
     given listFieldBuilder[T: Spec]: SpecBuilder[ListValue[T]] with
       def build(fieldName: String): Resolver => ListValue[T] = _.list(fieldName)
