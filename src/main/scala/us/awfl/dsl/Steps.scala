@@ -164,3 +164,13 @@ case class Block[T, V <: Resolved[T]](name: String, run: (List[Step[_, _]], V))(
 case class FlatMap[T, U, V <: BaseValue[U]](name: String, step: Step[T, _], resultVal: V)(using valueInit: ValueInit[U, V]) extends Step[U, V] {
   override def resultValue: V = resultVal
 }
+
+case class Parallel(name: String, branches: List[Step[?, ?]]) extends Step[NoValueT, NoValue]
+
+case class ParallelFor[In: Spec, Out: Spec](name: String, in: ListValue[In], item: Value[In], each: (List[Step[_, _]], BaseValue[Out])) extends Step[Out, ListValue[Out]]
+object ParallelFor {
+  def apply[In: Spec, Out: Spec](name: String, in: ListValue[In])(each: Value[In] => (List[Step[_, _]], BaseValue[Out])): ParallelFor[In, Out] = {
+    val item: Value[In] = init(s"${name}Value")
+    ParallelFor(name, in, item, each(item))
+  }
+}
