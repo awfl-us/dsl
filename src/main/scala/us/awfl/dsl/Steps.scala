@@ -21,25 +21,21 @@ trait ValueInit[T, V <: BaseValue[T]] {
 }
 object ValueInit:
   given baseInit[T: Spec]: ValueInit[T, BaseValue[T]] = new ValueInit[T, BaseValue[T]] {
-    // type resultType = BaseValue[T]
     def apply(name: String): BaseValue[T] = init(name)
     val nil = init("null")
   }
 
   given resolvedInit[T: Spec]: ValueInit[T, Resolved[T]] = new ValueInit[T, Resolved[T]] {
-    // type resultType = Value[T]
     def apply(name: String): Value[T] = init(name)
     val nil = init("null")
   }
 
   given valueInit[T: Spec]: ValueInit[T, Value[T]] = new ValueInit[T, Value[T]] {
-    // type resultType = Value[T]
     def apply(name: String): Value[T] = init(name)
     val nil = init("null")
   }
 
   given listInit[T: Spec]: ValueInit[T, ListValue[T]] = new ValueInit[T, ListValue[T]] {
-    // type resultType = ListValue[T]
     def apply(name: String): ListValue[T] = ListValue(Resolver(name))
     val nil = ListValue(Resolver("null"))
   }
@@ -126,18 +122,26 @@ object Try {
     Try(name, run, error, except(error))
   }
 
+  private def handle(err: Value[Error], reRaise: Boolean): List[Step[?,?]] = {
+    List(Log(s"logError", err.flatMap(_.message))) ++ (
+      if (reRaise) then List(Raise("reRaise", err))
+      else List()
+    )
+  }
+
   def apply[T: Spec, V <: BaseValue[T]](
     name: String,
-    run: (List[Step[_, _]], V)
+    run: (List[Step[_, _]], V),
+    reRaise: Boolean = true
   )(using ng: NotGiven[V <:< ListValue[T]], valueInit: ValueInit[T, Value[T]]): Try[T, Value[T]] =
-    Try(name, run, err => List(Log(s"${name}_logError", err.flatMap(_.message))) -> init("null"))
+    Try(name, run, err => handle(err, reRaise) -> init("null"))
 
   def apply[T: Spec](
     name: String,
     run: (List[Step[_, _]], ListValue[T])
   )(using valueInit: ValueInit[T, ListValue[T]]): Try[T, ListValue[T]] = {
     val error = init[Error](s"${name}Error")
-    Try(name, run, error, List(Log(s"${name}_logError", error.flatMap(_.message))) -> ListValue("null"))
+    Try(name, run, error, handle(error, true) -> ListValue("null"))
   }
 }
 case class Error(message: Value[String], code: Value[Int])
