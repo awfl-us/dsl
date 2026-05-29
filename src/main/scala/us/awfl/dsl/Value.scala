@@ -137,8 +137,8 @@ case class OptResolved[T: Spec](resolver: Resolver) extends OptBase[T] {
   val spec = summon[Spec[T]]
 }
 case class OptObj[T](obj: Obj[T]) extends OptBase[T] {
-  def getOrElse(default: Value[T]): Value[T] = sys.error("You can't getOrElse directly from a raw OptObj. OptObj chould only be constructed for outbound calls.")
-  def map[U: Spec](f: Value[T] => Value[U]): OptBase[U] = sys.error("You can't map a raw OptObj. OptObj chould only be constructed for outbound calls.")
+  def getOrElse(default: Value[T]): Value[T] = sys.error("You can't getOrElse directly from a raw OptObj. OptObj should only be constructed for outbound calls.")
+  def map[U: Spec](f: Value[T] => Value[U]): OptBase[U] = sys.error("You can't map a raw OptObj. OptObj should only be constructed for outbound calls.")
 }
 type OptValue[T] = OptBase[T]
 object OptValue {

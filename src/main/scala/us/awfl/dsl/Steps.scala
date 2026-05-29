@@ -9,6 +9,7 @@ import CelOps._
 import java.util.concurrent.atomic.AtomicLong
 import scala.util.NotGiven
 import scala.annotation.implicitNotFound
+import us.awfl.dsl.auto.given
 
 def init[T: Spec](name: String): Value[T] = {
   val resolver = Resolver(name)
@@ -144,12 +145,12 @@ object Try {
     Try(name, run, error, handle(error, true) -> ListValue("null"))
   }
 }
-case class Error(message: Value[String], code: Value[Int])
-implicit val errorSpec: Spec[Error] = Spec { resolver =>
-  import resolver._
+case class Error(message: Value[String], code: OptValue[Int])
+// implicit val errorSpec: Spec[Error] = Spec { resolver =>
+//   import resolver._
 
-  Error(in("message"), in("code"))
-}
+//   Error(in("message"), OptValue[Int](in("code")))
+// }
 
 case class Raise(name: String, raise: BaseValue[Error]) extends Step[NoValueT, NoValue]
 
