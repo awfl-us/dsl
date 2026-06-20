@@ -118,6 +118,7 @@ implicit val nothingSpec: Spec[Nothing] = Spec(_ => sys.error("No spec for Nothi
 sealed trait OptBase[T] {
   def getOrElse(default: Value[T]): Value[T]
   def map[U: Spec](f: Value[T] => Value[U]): OptBase[U]
+  def present: Value[Boolean] = map(_ => Value[Boolean](true)).getOrElse(Value[Boolean](false))
 }
 case class OptResolved[T: Spec](resolver: Resolver) extends OptBase[T] {
   def getOrElse(default: Value[T]): Value[T] = resolver.path.path match {

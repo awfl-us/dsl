@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicLong
 import scala.util.NotGiven
 import scala.annotation.implicitNotFound
 import us.awfl.dsl.auto.given
+import scala.collection.immutable.Range.Partial
 
 def init[T: Spec](name: String): Value[T] = {
   val resolver = Resolver(name)
@@ -110,6 +111,10 @@ object Switch {
 type ValueType[T, V <: Resolved[T]] <: BaseValue[T] = V match {
   case Value[T] => BaseValue[T]
   case ListValue[T] => ListValue[T]
+}
+
+case class Match[T: Spec, U, V <: BaseValue[T], W <: BaseValue[U]](name: String, in: V, cases: PartialFunction[T, U]) extends Step[U, W] {
+  
 }
 
 case class Try[T: Spec, V <: Resolved[T]](name: String, run: (List[Step[_, _]], ValueType[T, V]), error: Resolved[Error], except: (List[Step[_, _]], ValueType[T, V]))(using valueInit: ValueInit[T, V]) extends Step[T, V]
