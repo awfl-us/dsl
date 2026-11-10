@@ -23,7 +23,7 @@ object Resolver {
 
 def str(cel: Cel): Value[String] = Value(Resolver(CelPath(cel :: Nil)))
 
-def encodeJson(value: Resolved[_]): Cel = CelFunc("json.encode_to_string", value.cel)
+def encodeJson(value: Resolved[_]): Cel = CelFunction(FunctionId.JsonEncodeString, value.cel)
 
 sealed trait Resolved[T: Spec] extends BaseValue[T] {
   val resolver: Resolver
@@ -81,7 +81,7 @@ def buildValueList[T: Spec](name: String, list: List[BaseValue[T]]): Step[T, Lis
   List(switchStep) -> switchStep.resultValue
 }
 
-def len(list: ListValue[_]): Cel = CelFunc("len", CelValue(list))
+def len(list: ListValue[_]): Cel = CelFunction(FunctionId.Length, CelValue(list))
 
 def join[T: Spec](name: String, lists: ListValue[T]*): Step[T, ListValue[T]] = {
   val withCumulative = lists.toList.zipWithIndex.map { (l, n) =>
@@ -121,12 +121,12 @@ sealed trait OptBase[T] {
 }
 case class OptResolved[T: Spec](resolver: Resolver) extends OptBase[T] {
   def getOrElse(default: Value[T]): Value[T] = resolver.path.path match {
-    case single :: Nil => Value(CelFunc("default", single, default.cel))
+    case single :: Nil => Value(CelFunction(FunctionId.Default, single, default.cel))
     case multiple @ (_ :: _ :: _) => multiple.last match {
       case CelConst(last) =>
-        Value(CelFunc("default", CelFunc("map.get", CelPath(multiple.init), last), default.cel))
+        Value(CelFunction(FunctionId.Default, CelFunction(FunctionId.MapGet, CelPath(multiple.init), last), default.cel))
       case _ =>
-        Value(CelFunc("default", CelPath(multiple), default.cel))
+        Value(CelFunction(FunctionId.Default, CelPath(multiple), default.cel))
     }
       
     case Nil => sys.error("Unexpected empty resolver")

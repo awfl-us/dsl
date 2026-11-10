@@ -61,6 +61,11 @@ extension[T](self: Step[T, Value[T]])
 
 case class Call[In, Out: Spec](name: String, call: String, args: BaseValue[In]) extends Step[Out, Value[Out]]
 
+/** Native-capable calls carry a typed identity; legacy Call(String) remains YAML-only
+  * until every call site is migrated.
+  */
+case class TypedCall[In, Out: Spec](name: String, id: CallId, args: BaseValue[In]) extends Step[Out, Value[Out]]
+
 case class Return[T](name: String, value: BaseValue[T]) extends Step[NoValueT, NoValue]
 
 case class For[In: Spec, Out: Spec](name: String, in: ListValue[In], item: Value[In], each: (List[Step[_, _]], BaseValue[Out])) extends Step[Out, ListValue[Out]]
