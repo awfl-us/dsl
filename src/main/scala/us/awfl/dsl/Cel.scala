@@ -32,20 +32,6 @@ object CelFunc {
   def apply(name: String, params: Cel*): CelFunc = CelFunc(name, params.toList)
 }
 
-// Native-backend expressions are typed. Legacy raw-string nodes remain YAML-only.
-case class CelFunction(id: FunctionId, params: List[Cel]) extends Cel
-object CelFunction {
-  def apply(id: FunctionId, params: Cel*): CelFunction = CelFunction(id, params.toList)
-}
-case class CelGlobal(id: GlobalId) extends Cel
-case class CelBinary(left: Cel, op: OperatorId, right: Cel) extends Cel
-case class CelUnary(op: OperatorId, operand: Cel) extends Cel
-case class CelList(elements: List[Cel]) extends Cel
-case class CelString(content: String) extends Cel
-case class CelInteger(value: Long) extends Cel
-case class CelBoolean(value: Boolean) extends Cel
-case object CelNull extends Cel
-
 case class CelAt(list: ListValue[_], i: Cel) extends Cel
 
 case class CelPath(path: List[Cel]) extends Cel {
@@ -77,20 +63,20 @@ object Cel {
 
 object CelOps {
   extension (left: Cel)
-    def ===(right: Cel): Cel = CelBinary(left, OperatorId.Equal, right)
-    def !==(right: Cel): Cel = CelBinary(left, OperatorId.NotEqual, right)
-    def >(right: Cel): Cel = CelBinary(left, OperatorId.Greater, right)
-    def >=(right: Cel): Cel = CelBinary(left, OperatorId.GreaterEq, right)
-    def <(right: Cel): Cel = CelBinary(left, OperatorId.Less, right)
-    def <=(right: Cel): Cel = CelBinary(left, OperatorId.LessEq, right)
-    def +(right: Cel): Cel = CelBinary(left, OperatorId.Add, right)
-    def -(right: Cel): Cel = CelBinary(left, OperatorId.Subtract, right)
-    def *(right: Cel): Cel = CelBinary(left, OperatorId.Multiply, right)
-    def `//`(right: Cel): Cel = CelBinary(left, OperatorId.DivideInt, right)
-    def in(list: Cel): Cel = CelBinary(left, OperatorId.Contains, list)
-    def &&(right: Cel): Cel = CelBinary(left, OperatorId.And, right)
-    def ||(right: Cel): Cel = CelBinary(left, OperatorId.Or, right)
-    def unary_! : Cel = CelUnary(OperatorId.Not, left)
+    def ===(right: Cel): Cel = CelOp(left, "==", right)
+    def !==(right: Cel): Cel = CelOp(left, "!=", right)
+    def >(right: Cel): Cel = CelOp(left, ">", right)
+    def >=(right: Cel): Cel = CelOp(left, ">=", right)
+    def <(right: Cel): Cel = CelOp(left, "<", right)
+    def <=(right: Cel): Cel = CelOp(left, "<=", right)
+    def +(right: Cel): Cel = CelOp(left, "+", right)
+    def -(right: Cel): Cel = CelOp(left, "-", right)
+    def *(right: Cel): Cel = CelOp(left, "*", right)
+    def `//`(right: Cel): Cel = CelOp(left, "//", right)
+    def in(list: Cel): Cel = CelOp(left, "in", list)
+    def &&(right: Cel): Cel = CelOp(left, "and", right)
+    def ||(right: Cel): Cel = CelOp(left, "or", right)
+    def unary_! : Cel = CelOp(CelConst("not"), "", left)
 
   // Extension to build a Cel list constant from a Scala List
   extension [A](xs: List[A])

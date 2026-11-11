@@ -235,3 +235,22 @@ Before contributing, please:
 
 ## License
 MIT — see [LICENSE](LICENSE).
+
+### Shared operation constants (Google YAML and native Rust)
+
+Use `CelFunctions` or `CallOperations` for backend-independent operations.
+There is **no new CEL or Call AST**; existing `CelFunc`, `CelOp`, and `Call`
+constructors are unchanged. The YAML compiler translates these constants
+back to Google Workflows names, and the Rust compiler matches their IDs.
+
+```scala
+import us.awfl.dsl.*
+
+val length = CelFunc(CelFunctions.Length, CelConst("[]"))
+val request = Call[Map[String, String], String](
+  "request", CallOperations.HttpPost, obj(Map("url" -> "https://example.org")))
+```
+
+Only the operation-name strings need substituting in existing workflows; CEL
+operators and value shapes stay unchanged. An existing literal name still
+compiles through the YAML compiler until its workflow is migrated.
