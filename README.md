@@ -75,7 +75,7 @@ SBT coordinates:
 In build.sbt:
 
 ```scala
-libraryDependencies += "us.awfl" %% "dsl" % "0.3.4"
+libraryDependencies += "us.awfl" %% "dsl" % "0.3.5"
 ```
 
 If building locally first:
