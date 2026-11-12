@@ -14,6 +14,31 @@ A compact, type-safe DSL for describing workflows as pure data in Scala 3. Compo
 
 ---
 
+## CEL standard library
+
+Standard CEL functions retain their documented names, not backend-neutral
+aliases. All lowercase helpers are available from one DSL import:
+
+```scala
+import us.awfl.dsl.*
+
+val created: Value[Double] = Value(time.now())
+val key: Cel = map.get(CelConst("payload"), "id")
+val lower: Cel = text.to_lower(key)
+val encoded: Cel = json.encode_to_string(CelConst("data"))
+```
+
+Helpers emit the existing `CelFunc` expression nodes directly, e.g.
+`time.now()` is `CelFunc(CelFunctions.Time.Now)`, whose name is exactly
+`"sys.now"` (Google Workflows' CEL standard-library name). The distinct Scala
+helper name avoids shadowing Scala's `sys` namespace. This lets YAML emit
+the standard library call and Rust recognize that same function name.
+
+**Only connector operations** used by `Call` use backend-neutral identifiers
+such as `CallOperations.WorkflowRun`. Support for each standard-library
+function's runtime semantics is tracked separately per backend; the expression
+helper itself does not introduce an executable step or guarantee native support.
+
 ## Table of contents
 - [Features](#features)
 - [Installation](#installation)
