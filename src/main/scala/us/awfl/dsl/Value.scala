@@ -23,7 +23,7 @@ object Resolver {
 
 def str(cel: Cel): Value[String] = Value(Resolver(CelPath(cel :: Nil)))
 
-def encodeJson(value: Resolved[_]): Cel = CelFunc("json.encode_to_string", value.cel)
+def encodeJson(value: Resolved[?]): Cel = CelFunc("json.encode_to_string", value.cel)
 
 sealed trait Resolved[T: Spec] extends BaseValue[T] {
   val resolver: Resolver
@@ -31,7 +31,7 @@ sealed trait Resolved[T: Spec] extends BaseValue[T] {
   val spec = implicitly[Spec[T]]
   def get: T = spec.init(resolver.unsafe)
 
-  def ++:(left: Resolved[_]): Resolved[T]
+  def ++:(left: Resolved[?]): Resolved[T]
 }
 
 case class Value[T: Spec](resolver: Resolver) extends Resolved[T] {
@@ -66,22 +66,18 @@ object ListValue {
 }
 
 def buildList[T: Spec](name: String, list: List[T]): Step[T, ListValue[T]] = ForRange(name, 0, list.size) { i =>
-  val switchStep = Switch(s"${name}_switch", list.zipWithIndex.map { case (e, i2) =>
+  Switch(s"${name}_switch", list.zipWithIndex.map { case (e, i2) =>
     (i === i2) -> (List() -> obj(e))
-  })
-
-  List(switchStep) -> switchStep.resultValue
+  }).fn
 }
 
 def buildValueList[T: Spec](name: String, list: List[BaseValue[T]]): Step[T, ListValue[T]] = ForRange(name, 0, list.size) { i =>
-  val switchStep = Switch(s"${name}_switch", list.zipWithIndex.map { case (e, i2) =>
+  Switch(s"${name}_switch", list.zipWithIndex.map { case (e, i2) =>
     (i === i2) -> (List() -> e)
-  })
-
-  List(switchStep) -> switchStep.resultValue
+  }).fn
 }
 
-def len(list: ListValue[_]): Cel = CelFunc("len", CelValue(list))
+def len(list: ListValue[?]): Cel = CelFunc("len", CelValue(list))
 
 def join[T: Spec](name: String, lists: ListValue[T]*): Step[T, ListValue[T]] = {
   val withCumulative = lists.toList.zipWithIndex.map { (l, n) =>
@@ -98,7 +94,7 @@ def join[T: Spec](name: String, lists: ListValue[T]*): Step[T, ListValue[T]] = {
 }
 
 def joinSteps[T: Spec](name: String, steps: Step[T, ListValue[T]]*): Step[T, ListValue[T]] = {
-  val joinAll = join(s"${name}_joinSteps", steps.map(_.resultValue): _*)
+  val joinAll = join(s"${name}_joinSteps", steps.map(_.resultValue)*)
   Block(s"${name}_joinSteps", (steps.toList :+ joinAll) -> joinAll.resultValue)
 }
 
@@ -118,22 +114,24 @@ implicit val nothingSpec: Spec[Nothing] = Spec(_ => sys.error("No spec for Nothi
 sealed trait OptBase[T] {
   def getOrElse(default: Value[T]): Value[T]
   def map[U: Spec](f: Value[T] => Value[U]): OptBase[U]
-  def present: Value[Boolean] = map(_ => Value[Boolean](true)).getOrElse(Value[Boolean](false))
+  def present: Value[Boolean] = map(v => Value[Boolean](v !== Cel.nil)).getOrElse(Value[Boolean](false))
 }
 case class OptResolved[T: Spec](resolver: Resolver) extends OptBase[T] {
-  def getOrElse(default: Value[T]): Value[T] = resolver.path.path match {
-    case single :: Nil => Value(CelFunc("default", single, default.cel))
+  private def mapValue[U](f: Value[T] => Value[U]): Value[U] = resolver.path.path match {
+    case single :: Nil => f(Value(single))
     case multiple @ (_ :: _ :: _) => multiple.last match {
       case CelConst(last) =>
-        Value(CelFunc("default", CelFunc("map.get", CelPath(multiple.init), last), default.cel))
+        f(Value(CelFunc("map.get", CelPath(multiple.init), last)))
       case _ =>
-        Value(CelFunc("default", CelPath(multiple), default.cel))
+        f(Value(CelPath(multiple)))
     }
       
     case Nil => sys.error("Unexpected empty resolver")
   }
 
-  def map[U: Spec](f: Value[T] => Value[U]): OptBase[U] = OptResolved(f(Value[T](resolver)).resolver)
+  def getOrElse(default: Value[T]): Value[T] = mapValue(v => Value(CelFunc("default", v, default.cel)))
+
+  def map[U: Spec](f: Value[T] => Value[U]): OptBase[U] = OptResolved(mapValue(f).resolver)
 
   val spec = summon[Spec[T]]
 }

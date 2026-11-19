@@ -4,7 +4,7 @@ import scala.language.implicitConversions
 
 sealed trait Cel
 
-case class CelValue(value: BaseValue[_]) extends Cel
+case class CelValue(value: BaseValue[?]) extends Cel
 
 case class CelConst(value: String) extends Cel
 
@@ -32,7 +32,7 @@ object CelFunc {
   def apply(name: String, params: Cel*): CelFunc = CelFunc(name, params.toList)
 }
 
-case class CelAt(list: ListValue[_], i: Cel) extends Cel
+case class CelAt(list: ListValue[?], i: Cel) extends Cel
 
 case class CelPath(path: List[Cel]) extends Cel {
   def ++(other: CelPath): CelPath = CelPath(this.path ++ other.path)
@@ -57,8 +57,8 @@ object Cel {
   given Conversion[Boolean, Cel] with
     def apply(b: Boolean): Cel = CelConst(b.toString)
 
-  given Conversion[Resolved[_], Cel] with
-    def apply(v: Resolved[_]): Cel = CelValue(v)
+  given Conversion[Resolved[?], Cel] with
+    def apply(v: Resolved[?]): Cel = CelValue(v)
 }
 
 object CelOps {
@@ -73,7 +73,7 @@ object CelOps {
     def -(right: Cel): Cel = CelOp(left, "-", right)
     def *(right: Cel): Cel = CelOp(left, "*", right)
     def `//`(right: Cel): Cel = CelOp(left, "//", right)
-    def in(list: Cel): Cel = CelOp(left, "in", list)
+    infix def in(list: Cel): Cel = CelOp(left, "in", list)
     def &&(right: Cel): Cel = CelOp(left, "and", right)
     def ||(right: Cel): Cel = CelOp(left, "or", right)
     def unary_! : Cel = CelOp(CelConst("not"), "", left)
@@ -95,7 +95,7 @@ object CelOps {
     case l: Long => l.toString
     case f: Float => f.toString
     case d: Double => d.toString
-    case xs: List[_] => xs.map(renderListElem).mkString("[", ", ", "]")
+    case xs: List[?] => xs.map(renderListElem).mkString("[", ", ", "]")
     case null => "null"
     case other => other.toString
 }

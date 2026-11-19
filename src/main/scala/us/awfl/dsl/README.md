@@ -14,7 +14,7 @@ The DSL is centered around the following core abstractions:
 ### `Cel.scala`
 Defines a typed AST for CEL (Common Expression Language) expressions including literals, operations, function calls, and paths. It provides:
 - Sealed trait `Cel` and case classes like `CelConst`, `CelOp`, `CelFunc`
-- Implicit conversions from literals (String, Int, Boolean) and `BaseValue[_]` to `Cel`
+- Implicit conversions from literals (String, Int, Boolean) and `BaseValue[?]` to `Cel`
 - Operator extensions via `CelOps`, including ===, !==, >, <, &&, ||, etc.
 
 ### `Spec.scala`

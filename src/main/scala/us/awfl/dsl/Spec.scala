@@ -2,6 +2,7 @@ package us.awfl.dsl
 
 import scala.deriving.Mirror
 import scala.compiletime.{erasedValue, summonInline, constValueTuple}
+import scala.util.NotGiven
 
 case class Spec[T](initIfSafe: Resolver => T, unsafe: Boolean = false) {
   def init(resolver: Resolver): T = resolver.safe match {
@@ -19,7 +20,17 @@ implicit def listSpec[T]: Spec[List[T]] = Spec(_ => List.empty, unsafe = true)
 implicit def optValueSpec[T: Spec]: Spec[OptValue[T]] = Spec(resolver => OptResolved(resolver))
 implicit def optListSpec[T: Spec]: Spec[OptList[T]] = Spec(resolver => OptList(resolver))
 
-object auto:
+trait LowPrioritySpec:
+  given nonProductSpec[T](using NotGiven[Mirror.ProductOf[T]]): Spec[T] =
+    Spec(
+      r => sys.error(
+        s"No Spec for non-product type at ${r.path.path}. " +
+        "Use Match to branch on the actual sub-type"
+      ),
+      unsafe = false
+    )
+
+object auto extends LowPrioritySpec:
   inline given derivedSpec[T](using m: Mirror.ProductOf[T]): Spec[T] =
     val labels = constValueTuple[m.MirroredElemLabels].productIterator.map(_.toString).toList
     val builders = summonSpecs[m.MirroredElemTypes](labels)
@@ -70,6 +81,16 @@ object auto:
     given specBasedBuilder[T](using spec: Spec[T]): SpecBuilder[T] with
       def build(fieldName: String): Resolver => T = r => summon[Spec[T]].init(r.in(fieldName).resolver)
 
-    given leafBaseValue: SpecBuilder[BaseValue[_]] with
-      def build(fieldName: String): Resolver => BaseValue[_] =
+    given leafBaseValue: SpecBuilder[BaseValue[?]] with
+      def build(fieldName: String): Resolver => BaseValue[?] =
         r => Value[Int](r.in[Int](fieldName))
+
+    given nonProductBuilder[T](
+      using NotGiven[Mirror.ProductOf[T]],
+            NotGiven[Spec[T]]
+    ): SpecBuilder[T] with
+      def build(fieldName: String): Resolver => T =
+        r => sys.error(
+          s"No Spec for non-product field ${r.path.path} $fieldName. " +
+          "Use Match to branch on the actual sub-type"
+        )

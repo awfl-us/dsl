@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicLong
 import scala.util.NotGiven
 import scala.annotation.implicitNotFound
 import us.awfl.dsl.auto.given
+import us.awfl.dsl.macros.Macros
 import scala.collection.immutable.Range.Partial
 
 def init[T: Spec](name: String): Value[T] = {
@@ -64,27 +65,27 @@ case class Call[In, Out: Spec](name: String, call: String, args: BaseValue[In]) 
 
 case class Return[T](name: String, value: BaseValue[T]) extends Step[NoValueT, NoValue]
 
-case class For[In: Spec, Out: Spec](name: String, in: ListValue[In], item: Value[In], each: (List[Step[_, _]], BaseValue[Out])) extends Step[Out, ListValue[Out]]
+case class For[In: Spec, Out: Spec](name: String, in: ListValue[In], item: Value[In], each: (List[Step[?, ?]], BaseValue[Out])) extends Step[Out, ListValue[Out]]
 object For {
-  def apply[In: Spec, Out: Spec](name: String, in: ListValue[In])(each: Value[In] => (List[Step[_, _]], BaseValue[Out])): For[In, Out] = {
+  def apply[In: Spec, Out: Spec](name: String, in: ListValue[In])(each: Value[In] => (List[Step[?, ?]], BaseValue[Out])): For[In, Out] = {
     val item: Value[In] = init(s"${name}Value")
     For(name, in, item, each(item))
   }
 }
 
-case class ForRange[Out: Spec](name: String, from: Cel, to: Cel, idx: CelConst, each: (List[Step[_, _]], BaseValue[Out])) extends Step[Out, ListValue[Out]]
+case class ForRange[Out: Spec](name: String, from: Cel, to: Cel, idx: CelConst, each: (List[Step[?, ?]], BaseValue[Out])) extends Step[Out, ListValue[Out]]
 object ForRange {
-  def apply[Out: Spec](name: String, from: Cel, to: Cel)(each: Cel => (List[Step[_, _]], BaseValue[Out])): ForRange[Out] = {
+  def apply[Out: Spec](name: String, from: Cel, to: Cel)(each: Cel => (List[Step[?, ?]], BaseValue[Out])): ForRange[Out] = {
     val idx: CelConst = CelConst(s"${name}Idx")
     ForRange(name, from, to, idx, each(idx))
   }
 }
 
-case class Fold[B: Spec, T: Spec, W <: Resolved[B]](name: String, b: ValueType[B, W], list: ListValue[T], bResult: W, item: Value[T], run: (List[Step[_, _]], BaseValue[B]))(using vi: ValueInit[B, W]) extends Step[B, W] {
+case class Fold[B: Spec, T: Spec, W <: Resolved[B]](name: String, b: ValueType[B, W], list: ListValue[T], bResult: W, item: Value[T], run: (List[Step[?, ?]], BaseValue[B]))(using vi: ValueInit[B, W]) extends Step[B, W] {
   override def resultValue: W = bResult
 }
 object Fold {
-  def apply[B: Spec, T: Spec](name: String, b: BaseValue[B], list: ListValue[T])(run: (Value[B], Value[T]) => (List[Step[_, _]], BaseValue[B]))(using bInit: ValueInit[B, Value[B]]): Fold[B, T, Value[B]] = {
+  def apply[B: Spec, T: Spec](name: String, b: BaseValue[B], list: ListValue[T])(run: (Value[B], Value[T]) => (List[Step[?, ?]], BaseValue[B]))(using bInit: ValueInit[B, Value[B]]): Fold[B, T, Value[B]] = {
     val item: Value[T] = init(s"${name}Value")
     val dummyRun = run(bInit(s"${name}Dummy"), item)
     val hash = (List(name, b, list, item, dummyRun).hashCode  & 0x7FFFFFFF).toHexString
@@ -94,17 +95,17 @@ object Fold {
   }
 }
 
-case class Switch[T: Spec, V <: Resolved[T]] private (name: String, cases: List[(Cel, (List[Step[_, _]], ValueType[T, V]))])(using ng: NotGiven[V =:= Resolved[T]], valueInit: ValueInit[T, V]) extends Step[T, V]
+case class Switch[T: Spec, V <: Resolved[T]] private (name: String, cases: List[(Cel, (List[Step[?, ?]], ValueType[T, V]))])(using ng: NotGiven[V =:= Resolved[T]], valueInit: ValueInit[T, V]) extends Step[T, V]
 object Switch {
   @implicitNotFound("Switch.apply cannot be used when cases produce a ListValue[${T}]. Use Switch.list instead.")
   trait NotListValue[T, V]
   object NotListValue:
     given mk[T, V](using NotGiven[V <:< ListValue[T]]): NotListValue[T, V] = new {}
 
-  def apply[T: Spec, V <: BaseValue[T]](name: String, cases: List[(Cel, (List[Step[_, _]], V))])(using valueInit: ValueInit[T, Value[T]], ng: NotListValue[T, V]): Switch[T, Value[T]] =
+  def apply[T: Spec, V <: BaseValue[T]](name: String, cases: List[(Cel, (List[Step[?, ?]], V))])(using valueInit: ValueInit[T, Value[T]], ng: NotListValue[T, V]): Switch[T, Value[T]] =
     Switch[T, Value[T]](name, cases)
 
-  def list[T: Spec](name: String, cases: List[(Cel, (List[Step[_, _]], ListValue[T]))])(using ValueInit[T, ListValue[T]]): Switch[T, ListValue[T]] =
+  def list[T: Spec](name: String, cases: List[(Cel, (List[Step[?, ?]], ListValue[T]))])(using ValueInit[T, ListValue[T]]): Switch[T, ListValue[T]] =
     Switch[T, ListValue[T]](name, cases)
 }
 
@@ -113,16 +114,37 @@ type ValueType[T, V <: Resolved[T]] <: BaseValue[T] = V match {
   case ListValue[T] => ListValue[T]
 }
 
-case class Match[T: Spec, U, V <: BaseValue[T], W <: BaseValue[U]](name: String, in: V, cases: PartialFunction[T, U]) extends Step[U, W] {
+// case class Match[T: Spec, U, V <: BaseValue[T], W <: BaseValue[U]](name: String, in: V, cases: PartialFunction[T, U]) extends Step[U, W] {
   
+// }
+
+trait IsAdt
+
+object Match {
+  inline def apply[T <: IsAdt : Spec, U: Spec, W <: BaseValue[U]](name: String, in: Value[T])(inline cases: PartialFunction[T, (List[Step[?, ?]], W)]): Step[U, Value[U]] = {
+    val extractedCases = Macros.matchedCases(in)(cases).zipWithIndex
+    val caseValues = ForRange(s"${name}_caseValues", 0, extractedCases.size) { i =>
+      Switch(s"${name}_caseValues_switch", extractedCases.map(_._1._1).zipWithIndex.map { case (e, i2) =>
+        (i === i2) -> Try(
+          "caseValueTry",
+          (List() -> e),
+          _ => List() -> Value[T](CelStr("Non matching case"))
+        ).fn
+      }).fn
+    }
+    val switch = Switch(name, extractedCases.map { case ((caseEq, value), i) =>
+      (CelFunc("json.encode_to_string", in) === CelFunc("json.encode_to_string", caseValues.resultValue(i))) -> value
+    })
+    Block(s"${name}_block", List[Step[?, ?]](caseValues, switch) -> switch.resultValue)
+  }
 }
 
-case class Try[T: Spec, V <: Resolved[T]](name: String, run: (List[Step[_, _]], ValueType[T, V]), error: Resolved[Error], except: (List[Step[_, _]], ValueType[T, V]))(using valueInit: ValueInit[T, V]) extends Step[T, V]
+case class Try[T: Spec, V <: Resolved[T]](name: String, run: (List[Step[?, ?]], ValueType[T, V]), error: Resolved[Error], except: (List[Step[?, ?]], ValueType[T, V]))(using valueInit: ValueInit[T, V]) extends Step[T, V]
 object Try {
   def apply[T: Spec](
     name: String,
-    run: (List[Step[_, _]], BaseValue[T]),
-    except: Value[Error] => (List[Step[_, _]], BaseValue[T])
+    run: (List[Step[?, ?]], BaseValue[T]),
+    except: Value[Error] => (List[Step[?, ?]], BaseValue[T])
   )(using valueInit: ValueInit[T, Value[T]]): Try[T, Value[T]] = {
     val error = init[Error](s"${name}Error")
     Try(name, run, error, except(error))
@@ -137,14 +159,14 @@ object Try {
 
   def apply[T: Spec, V <: BaseValue[T]](
     name: String,
-    run: (List[Step[_, _]], V),
+    run: (List[Step[?, ?]], V),
     reRaise: Boolean = true
   )(using ng: NotGiven[V <:< ListValue[T]], valueInit: ValueInit[T, Value[T]]): Try[T, Value[T]] =
     Try(name, run, err => handle(err, reRaise) -> init("null"))
 
   def apply[T: Spec](
     name: String,
-    run: (List[Step[_, _]], ListValue[T])
+    run: (List[Step[?, ?]], ListValue[T])
   )(using valueInit: ValueInit[T, ListValue[T]]): Try[T, ListValue[T]] = {
     val error = init[Error](s"${name}Error")
     Try(name, run, error, handle(error, true) -> ListValue("null"))
@@ -166,20 +188,20 @@ object Log {
   }
 }
 
-case class Block[T, V <: Resolved[T]](name: String, run: (List[Step[_, _]], V))(using valueInit: ValueInit[T, V]) extends Step[T, V] {
+case class Block[T, V <: Resolved[T]](name: String, run: (List[Step[?, ?]], V))(using valueInit: ValueInit[T, V]) extends Step[T, V] {
   val (steps, output) = run
   override def resultValue: V = output
 }
 
-case class FlatMap[T, U, V <: BaseValue[U]](name: String, step: Step[T, _], resultVal: V)(using valueInit: ValueInit[U, V]) extends Step[U, V] {
+case class FlatMap[T, U, V <: BaseValue[U]](name: String, step: Step[T, ?], resultVal: V)(using valueInit: ValueInit[U, V]) extends Step[U, V] {
   override def resultValue: V = resultVal
 }
 
 case class Parallel(name: String, branches: List[Step[?, ?]]) extends Step[NoValueT, NoValue]
 
-case class ParallelFor[In: Spec, Out: Spec](name: String, in: ListValue[In], item: Value[In], each: (List[Step[_, _]], BaseValue[Out])) extends Step[Out, ListValue[Out]]
+case class ParallelFor[In: Spec, Out: Spec](name: String, in: ListValue[In], item: Value[In], each: (List[Step[?, ?]], BaseValue[Out])) extends Step[Out, ListValue[Out]]
 object ParallelFor {
-  def apply[In: Spec, Out: Spec](name: String, in: ListValue[In])(each: Value[In] => (List[Step[_, _]], BaseValue[Out])): ParallelFor[In, Out] = {
+  def apply[In: Spec, Out: Spec](name: String, in: ListValue[In])(each: Value[In] => (List[Step[?, ?]], BaseValue[Out])): ParallelFor[In, Out] = {
     val item: Value[In] = init(s"${name}Value")
     ParallelFor(name, in, item, each(item))
   }

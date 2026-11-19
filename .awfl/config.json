@@ -1,0 +1,11 @@
+{
+  "files": [
+    "AGENT.md",
+    "src/main/scala/us/awfl/dsl/Cel.scala",
+    "src/main/scala/us/awfl/dsl/Steps.scala",
+    "src/main/scala/us/awfl/dsl/Value.scala"
+  ],
+  "commands": [
+    "pwd"
+  ]
+}

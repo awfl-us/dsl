@@ -1,5 +1,5 @@
 // build.sbt
-ThisBuild / scalaVersion := "3.3.1"
+ThisBuild / scalaVersion := "3.4.2"
 
 name := "dsl"
 organization := "us.awfl"
@@ -33,7 +33,9 @@ ThisBuild / version ~= { v =>
 // Dependencies
 libraryDependencies ++= Seq(
   "io.circe" %% "circe-core"    % "0.14.7",
-  "io.circe" %% "circe-generic" % "0.14.7"
+  "io.circe" %% "circe-generic" % "0.14.7",
+  // Test
+  "org.scalameta" %% "munit" % "1.0.0-M11" % Test
 )
 
 publishMavenStyle := true
