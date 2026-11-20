@@ -70,26 +70,32 @@ private[macros] object MacrosImpl:
     val listSym  = TypeRepr.of[us.awfl.dsl.ListValue].typeSymbol
     val baseSym  = TypeRepr.of[us.awfl.dsl.BaseValue].typeSymbol
 
+    // Resolver.in/list use a context-bound Spec[T]. Quotes must create both
+    // Apply lists: leaving the implicit list unapplied accidentally produces a
+    // context function. This only showed up once a binder was used as `id.cel`
+    // (a plain `-> id` happens to typecheck while the compiler completes it).
+    def field[t: Type](method: String): Term =
+      val spec = Expr.summon[us.awfl.dsl.Spec[t]].getOrElse(
+        report.errorAndAbort(s"Missing Spec while binding Match field '$pname'"))
+      val call = TypeApply(Select.unique(resolverTerm, method), List(TypeTree.of[t]))
+      Apply(Apply(call, List(Expr(pname).asTerm)), List(spec.asTerm))
+
     if pCtorTpe <:< TypeRepr.of[us.awfl.dsl.ListValue[?]] then
       val inner = typeArgOf(pCtorTpe, listSym).getOrElse(TypeRepr.of[Nothing])
       inner.asType match
         case '[t] =>
-          val call = TypeApply(Select.unique(resolverTerm, "list"), List(TypeTree.of[t]))
-          Apply(call, List(Expr(pname).asTerm))
+          field[t]("list")
     else if pCtorTpe <:< TypeRepr.of[us.awfl.dsl.BaseValue[?]] then
       // Value/Resolved/BaseValue path
       val inner = typeArgOf(pCtorTpe, baseSym).orElse(typeArgOf(pCtorTpe, TypeRepr.of[us.awfl.dsl.Value].typeSymbol)).getOrElse(TypeRepr.of[Nothing])
       inner.asType match
         case '[t] =>
-          val call = TypeApply(Select.unique(resolverTerm, "in"), List(TypeTree.of[t]))
-          Apply(call, List(Expr(pname).asTerm))
+          field[t]("in")
     else
       // raw type: Resolver.in[t](pname).get
       pCtorTpe.asType match
         case '[t] =>
-          val call = TypeApply(Select.unique(resolverTerm, "in"), List(TypeTree.of[t]))
-          val v    = Apply(call, List(Expr(pname).asTerm))
-          Select.unique(v, "get")
+          Select.unique(field[t]("in"), "get")
 
   // Build case-class constructed term S.apply(args...) using resolver path only
   private def constructCaseClassFromResolver[A: Type](using q: Quotes)(
