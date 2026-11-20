@@ -2,6 +2,7 @@ package us.awfl.dsl
 
 import scala.deriving.Mirror
 import scala.compiletime.{erasedValue, summonInline, constValueTuple}
+import scala.util.NotGiven
 
 case class Spec[T](initIfSafe: Resolver => T, unsafe: Boolean = false) {
   def init(resolver: Resolver): T = resolver.safe match {
@@ -19,7 +20,19 @@ implicit def listSpec[T]: Spec[List[T]] = Spec(_ => List.empty, unsafe = true)
 implicit def optValueSpec[T: Spec]: Spec[OptValue[T]] = Spec(resolver => OptResolved(resolver))
 implicit def optListSpec[T: Spec]: Spec[OptList[T]] = Spec(resolver => OptList(resolver))
 
-object auto:
+/** Allow an opaque/ADT value to be carried as Value[T] or ListValue[T].
+  * A non-product has no fields that can be projected statically, so `.get`
+  * fails deliberately at DSL construction time rather than manufacturing an
+  * invalid value. This preserves the original wip-old ADT Match contract.
+  */
+trait LowPrioritySpec:
+  given nonProductSpec[T](using NotGiven[Mirror.ProductOf[T]]): Spec[T] =
+    Spec(r => sys.error(
+      s"No Spec for non-product type at ${r.path.path}. " +
+      "Use Match to branch on the actual sub-type"
+    ))
+
+object auto extends LowPrioritySpec:
   inline given derivedSpec[T](using m: Mirror.ProductOf[T]): Spec[T] =
     val labels = constValueTuple[m.MirroredElemLabels].productIterator.map(_.toString).toList
     val builders = summonSpecs[m.MirroredElemTypes](labels)

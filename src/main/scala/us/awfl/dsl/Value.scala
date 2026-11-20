@@ -118,21 +118,26 @@ implicit val nothingSpec: Spec[Nothing] = Spec(_ => sys.error("No spec for Nothi
 sealed trait OptBase[T] {
   def getOrElse(default: Value[T]): Value[T]
   def map[U: Spec](f: Value[T] => Value[U]): OptBase[U]
+  /** Reports absence without treating empty strings or zero as missing. */
+  def present: Value[Boolean] = map(v => Value[Boolean](v !== Cel.nil)).getOrElse(Value[Boolean](false))
 }
 case class OptResolved[T: Spec](resolver: Resolver) extends OptBase[T] {
-  def getOrElse(default: Value[T]): Value[T] = resolver.path.path match {
-    case single :: Nil => Value(CelFunc("default", single, default.cel))
+  // Optional nested fields must read through map.get before applying a
+  // transformation: a raw path can be invalid when the field is absent.
+  private def mapValue[U](f: Value[T] => Value[U]): Value[U] = resolver.path.path match {
+    case single :: Nil => f(Value(single))
     case multiple @ (_ :: _ :: _) => multiple.last match {
       case CelConst(last) =>
-        Value(CelFunc("default", CelFunc("map.get", CelPath(multiple.init), last), default.cel))
+        f(Value(CelFunc("map.get", CelPath(multiple.init), last)))
       case _ =>
-        Value(CelFunc("default", CelPath(multiple), default.cel))
+        f(Value(CelPath(multiple)))
     }
-      
     case Nil => sys.error("Unexpected empty resolver")
   }
 
-  def map[U: Spec](f: Value[T] => Value[U]): OptBase[U] = OptResolved(f(Value[T](resolver)).resolver)
+  def getOrElse(default: Value[T]): Value[T] = mapValue(v => Value(CelFunc("default", v.cel, default.cel)))
+
+  def map[U: Spec](f: Value[T] => Value[U]): OptBase[U] = OptResolved(mapValue(f).resolver)
 
   val spec = summon[Spec[T]]
 }
