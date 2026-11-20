@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicLong
 import scala.util.NotGiven
 import scala.annotation.implicitNotFound
 import us.awfl.dsl.auto.given
+import us.awfl.dsl.macros.Macros
 
 def init[T: Spec](name: String): Value[T] = {
   val resolver = Resolver(name)
@@ -110,6 +111,37 @@ object Switch {
 type ValueType[T, V <: Resolved[T]] <: BaseValue[T] = V match {
   case Value[T] => BaseValue[T]
   case ListValue[T] => ListValue[T]
+}
+
+trait IsAdt
+
+object Match {
+  inline def apply[T <: IsAdt : Spec, U: Spec, W <: BaseValue[U]](name: String, in: Value[T])(inline cases: PartialFunction[T, (List[Step[?, ?]], W)]): Step[U, Value[U]] = {
+    val extractedCases = Macros.matchedCases(in)(cases).zipWithIndex
+    val caseValues = ForRange[T](s"${name}_caseValues", 0, extractedCases.size) { i =>
+      Switch[T, BaseValue[T]](s"${name}_caseValues_switch", extractedCases.map(_._1._1).zipWithIndex.map { case (e, i2) =>
+        (i === i2) -> Try(
+          "caseValueTry",
+          (List() -> e),
+          _ => List() -> Value[T](CelStr("Non matching case"))
+        ).fn
+      }).fn
+    }
+    val branches: List[(Cel, (List[Step[?, ?]], BaseValue[U]))] = extractedCases.map { case ((caseEq, value), i) =>
+      (CelFunc("json.encode_to_string", in) === CelFunc("json.encode_to_string", caseValues.resultValue(i))) ->
+        (value._1 -> (value._2: BaseValue[U]))
+    }
+    // A Switch with no matching branch silently returns {} in native memory
+    // mode. For ADTs that hides malformed inputs. Preserve the original JSON
+    // candidate matching, but require an explicit match or error.
+    val missing = Raise(s"${name}_noMatch", obj(Error(
+      str(s"Non-exhaustive ADT match: $name"), OptValue.nil[Int]
+    )))
+    val noMatch: (Cel, (List[Step[?, ?]], BaseValue[U])) =
+      CelConst("true") -> (List[Step[?, ?]](missing) -> (Value.nil[U]: BaseValue[U]))
+    val switch = Switch[U, BaseValue[U]](name, branches :+ noMatch)
+    Block(s"${name}_block", List[Step[?, ?]](caseValues, switch) -> switch.resultValue)
+  }
 }
 
 case class Try[T: Spec, V <: Resolved[T]](name: String, run: (List[Step[_, _]], ValueType[T, V]), error: Resolved[Error], except: (List[Step[_, _]], ValueType[T, V]))(using valueInit: ValueInit[T, V]) extends Step[T, V]

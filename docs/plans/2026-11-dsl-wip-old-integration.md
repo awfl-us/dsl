@@ -30,3 +30,30 @@ Ported the narrow `OptBase.present` and `OptResolved.mapValue` / nested `map.get
 4. Only after the foundation passes, resume the independent workflow lifecycle traits.
 
 **Execution target:** native Rust PostgreSQL **memory mode**. Durable per-effect journaling remains intentionally deferred for latency.
+
+## Phase 2: original `IsAdt` / `Match` JSON-candidate algorithm (2026-11-20)
+
+**Source parity:** restored `Macros`, `MacrosImpl`, `CaseExtractor`, `IsAdt`, and `Match` from `dsl/wip-old`, not the rejected experiment of generating direct `$awflType` predicates. The original `IsAdt` is only an empty marker trait. It imposes no subtype discriminator; the source algorithm reconstructs one JSON value per case using the bound input fields, protects failed candidate projections with `Try`, then uses `json.encode_to_string(in) == json.encode_to_string(candidate)` in a first-match `Switch`.
+
+**Usage sites reviewed from `wip-old`:** `workflow-utils/Locks.scala` `buildSessionKey` uses constructor field binders (`SegKala(sessionId, _, _)`); `workflow-utils/TopicContextYoj.scala` `encodeKalaVal` uses typed binders (`case seg: SegKala` and accesses `seg.sessionId` etc.); the `Match` form of `Prakriya.read` is *commented out* and therefore not a tested active use site. Workflow `EventHandler` carries `KalaVibhaga`, but does not directly use `Match` in the old branch.
+
+**Fixes beyond original source:**
+
+- Import the macro explicitly and fix `ForRange[T]` / `Switch[T, BaseValue[T]]` inference under the current Scala 3.3.1 DSL. No extra Rust compiler operators, serializer tags or alternative AST are needed.
+- A non-exhaustive match previously returned a **successful `{}`** in native Rust. `Match` now appends a terminal `Raise` with `Non-exhaustive ADT match: <name>` instead of concealing invalid or unmatched input. A deliberate final `case _` remains a total default.
+- Preserve **literal constructor fields** when building JSON candidates. This supports matching values inside a case class, for example `case Created("admin", id)` versus `case Created("user", id)`, without changing native serialization. The existing `Spec` primitive unsafe `.get` protection remains in effect for unbound raw primitive fields.
+- Preserve typed subtype-only tests (`case _: SegKala`) rather than treating them as wildcards; reject unrecognized pattern shapes at Scala macro expansion time rather than silently treating them as unconditional matches.
+
+**Evidence:**
+
+- DSL Scala tests `KalaMatchSmoke`, `LiteralPatternSmoke`, and existing `NonProductSpecSmoke` pass.
+- The compiler-rust branch `test/native-json-candidate-match` adds two Scala-generated Kala fixtures, one source-order/wildcard fixture, one effect/suspension fixture, and one value-sensitive literal-pattern fixture. With only a temporary `dsl:0.1.0-SNAPSHOT` dependency override, the unchanged native Rust compiler generated five binary fixtures and `scripts/test_adt_match.py` passed **31 real Rust execution assertions**: 8 Kala cases, 8 malformed-input failures, 3 first-match/wildcard checks, 3 unselected effect bypasses, 1 selected HTTP effect suspension, 1 injected continuation/resume, and 7 literal value checks. No HTTP/network effect was actually sent. No Google Workflows or durable journaling.
+
+**Explicit supported subset and remaining work:**
+
+- Supported: case-class constructor patterns with simple `Value`/`ListValue` binders, `_` wildcard fields, typed case-class binders, subtype-only tests, literal raw primitive fields, and terminal `case _` wildcard. First-match source ordering is preserved.
+- Not yet supported: guards, arbitrary recursive/nested extractors, complex literal-and-binder expressions in the same RHS (for example `case Created("admin", id) => ... str(id.cel + "@admin")` still fails with a Scala 3 quote-owner error; returning `id` itself works), and guaranteed discrimination when two different ADT subtypes serialize to **the same JSON shape**. Such identical-shape variants require an explicit encoded discriminator or a distinct serialization contract in a later compatibility-reviewed change. Do not claim that the marker `IsAdt` adds a discriminator automatically.
+- The native fixture branch must not be merged against compiler-rust's production `dsl:0.3.5` until a versioned DSL artifact containing `Match` is available; the test source intentionally depends on the new DSL.
+- Production still runs the prior `dsl:0.3.5` and native Rust PostgreSQL **memory mode**. No production workflow or binary has changed. Durable mode remains deferred.
+
+**Next gate:** settle same-shape ADT representation and the Scala binder quote-owner limitation; publish a versioned DSL, run current full ProjectManager/native parity against it, then merge the Rust conformance fixtures and move on to the remaining lifecycle traits.
